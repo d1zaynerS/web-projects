@@ -1,0 +1,925 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using PizzaStar.Data;
+using PizzaStar.Models;
+
+namespace PizzaStar
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+            var builder = WebApplication.CreateBuilder(args);
+
+            IConfigurationRoot _confString = new ConfigurationBuilder().SetBasePath(AppDomain.CurrentDomain.BaseDirectory).AddJsonFile("appsettings.json").Build();
+            builder.Services.AddDbContext<ApplicationContext>(options => options.UseSqlServer(_confString.GetConnectionString("DefaultConnection")));
+            builder.Services.AddIdentity<User, IdentityRole>(opts =>
+            {
+                opts.Password.RequiredLength = 5;   // РјС–РЅС–РјР°Р»СЊРЅР° РґРѕРІР¶РёРЅР°
+                opts.Password.RequireNonAlphanumeric = false;   //С‡Рё РїРѕС‚СЂС–Р±РЅС– Р°Р»С„Р°РІС–С‚РЅРѕ-С†РёС„СЂРѕРІС– СЃРёРјРІРѕР»Рё
+                opts.Password.RequireLowercase = false; // С‡Рё РїРѕС‚СЂС–Р±РЅС– СЃРёРјРІРѕР»Рё РІ РЅРёР¶РЅСЊРѕРјСѓ СЂРµРіС–СЃС‚СЂС–
+                opts.Password.RequireUppercase = false; //С‡Рё РїРѕС‚СЂС–Р±РЅС– СЃРёРјРІРѕР»Рё Сѓ РІРµСЂС…РЅСЊРѕРјСѓ СЂРµРіС–СЃС‚СЂС–
+                opts.Password.RequireDigit = false; //С‡Рё РїРѕС‚СЂС–Р±РЅС– С†РёС„СЂРё
+            }).AddEntityFrameworkStores<ApplicationContext>();
+
+            // Add services to the container.
+            builder.Services.AddControllersWithViews();
+
+            var app = builder.Build();
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var services = scope.ServiceProvider;
+                try
+                {
+                    var userManager = services.GetRequiredService<UserManager<User>>();
+                    var rolesManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+                    DbInit.InitializeAsync(userManager, rolesManager).Wait();
+
+                    var applicationContext = services.GetRequiredService<ApplicationContext>();
+                    DbInit.InitializeContentAsync(applicationContext).Wait();
+
+                }
+                catch (Exception ex)
+                {
+                    var logger = services.GetRequiredService<ILogger<Program>>();
+                    logger.LogError(ex, "An error occurred while seeding the database.");
+                }
+            }
+
+
+            // Configure the HTTP request pipeline.
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseExceptionHandler("/Home/Error");
+                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+                app.UseHsts();
+            }
+
+            app.UseHttpsRedirection();
+            app.UseRouting();
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.MapStaticAssets();
+            app.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Home}/{action=Index}/{id?}")
+                .WithStaticAssets();
+
+            app.Run();
+        }
+    }
+}
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using PizzaStar.Models;
+using PizzaStar.ViewModels;
+
+namespace PizzaStar.Controllers
+{
+    public class AccountController : Controller
+    {
+        private readonly UserManager<User> _userManager;
+        private readonly SignInManager<User> _signInManager;
+
+
+        public AccountController(UserManager<User> userManager, SignInManager<User> signInManager)
+        {
+            _userManager = userManager;
+            _signInManager = signInManager;
+        }
+
+
+        [Route("login")]
+        [HttpGet]
+        public IActionResult Login(string returnUrl = null)
+        {
+            if (User.Identity.IsAuthenticated)
+            {
+                return RedirectToAction("Index", "Home");
+            }
+            return View(new LoginViewModel { ReturnUrl = returnUrl });
+        }
+
+
+        [Route("login")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Login(LoginViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var result =
+                    await _signInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, false);
+                if (result.Succeeded)
+                {
+                    // перевіряємо, чи належить URL-адресі додатку
+                    if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
+                    {
+                        return Redirect(model.ReturnUrl);
+                    }
+                    else
+                    {
+                        return RedirectToAction("Index", "Home");
+                    }
+                }
+                else
+                {
+                    ModelState.AddModelError("", "Неправильний логін та (або) пароль");
+                }
+            }
+            return View(model);
+        }
+
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Logout()
+        {
+            // видаляємо автентифікаційні куки
+            await _signInManager.SignOutAsync();
+            return RedirectToAction("Index", "Home");
+        }
+
+
+        [AcceptVerbs("Get", "Post")]
+        [AllowAnonymous]
+        public IActionResult IsEmailInUse(string email)
+        {
+            if (_userManager.Users.Any(e => e.Email!.Equals(email)))
+            {
+                return Json(false);
+            }
+            else
+            {
+                return Json(true);
+            }
+        }
+
+
+        [AcceptVerbs("Get", "Post")]
+        [AllowAnonymous]
+        public IActionResult IsEmailExists(string email)
+        {
+            if (_userManager.Users.Any(e => e.Email!.Equals(email)))
+            {
+                return Json(true);
+            }
+            else
+            {
+                return Json(false);
+            }
+        }
+
+
+        [Route("register")]
+        [HttpGet]
+        public IActionResult Register()
+        {
+            if (User.Identity.IsAuthenticated)
+            {
+                return RedirectToAction("Index", "Home");
+            }
+            return View();
+        }
+
+
+        [Route("register")]
+        [HttpPost]
+        [AutoValidateAntiforgeryToken]
+        public async Task<IActionResult> Register(RegisterViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                User user = new User { Email = model.Email, UserName = model.Email, Year = model.Year, PhoneNumber = model.Phone };
+                // додаємо користувача
+                var result = await _userManager.CreateAsync(user, model.Password);
+                if (result.Succeeded)
+                {
+                    //Установки ролі. Сама роль знаходиться у таблиці AspNetRoles
+                    //якщо таблиця порожня, отримаємо помилку. Обов'язково заповнюємо ролі!
+                    result = await _userManager.AddToRoleAsync(user, "Client");
+                    // встановлення cookie
+                    await _signInManager.SignInAsync(user, false);
+                    return RedirectToAction("Index", "Home");
+                }
+                else
+                {
+                    foreach (var error in result.Errors)
+                    {
+                        ModelState.AddModelError(string.Empty, error.Description);
+                    }
+                }
+            }
+            return View(model);
+        }
+
+    }
+
+}
+namespace PizzaStar.Controllers
+{
+    public class CategoryController
+    {
+    }
+}
+using Microsoft.AspNetCore.Mvc;
+using PizzaStar.Models;
+using System.Diagnostics;
+
+namespace PizzaStar.Controllers
+{
+    public class HomeController : Controller
+    {
+        [Route("/")]
+        [HttpGet]
+        public IActionResult Index()
+        {
+            return View();
+        }
+    }
+}
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using PizzaStar.Models;
+using PizzaStar.Models.Pages;
+using PizzaStar.ViewModels;
+
+namespace PizzaStar.Controllers
+{
+    [Authorize(Roles = "Admin, Editor")]
+    public class PanelController : Controller
+    {
+
+        private readonly UserManager<User> _userManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
+        public PanelController(UserManager<User> userManager, RoleManager<IdentityRole> roleManager)
+        {
+            _userManager = userManager;
+            _roleManager = roleManager;
+        }
+
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/index")]
+        [HttpGet]
+        public IActionResult Index()
+        {
+            return View();
+        }
+
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/users")]
+        [HttpGet]
+        public IActionResult Users(QueryOptions options)
+        {
+            var pagedList = new PagedList<User>(_userManager.Users, options);
+            return View(pagedList);
+
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/create-update-user")]
+        [HttpGet]
+        public async Task<IActionResult> CreateOrUpdateUser(string? userId)
+        {
+            if (userId is null)
+            {
+                return View(new CreateOrUpdateUserViewModel());
+            }
+            else
+            {
+                User user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                {
+                    return NotFound();
+                }
+                CreateOrUpdateUserViewModel model = new CreateOrUpdateUserViewModel
+                {
+                    Id = user.Id,
+                    Email = user.Email,
+                    Phone = user.PhoneNumber,
+                    Year = user.Year,
+                };
+                return View(model);
+            }
+        }
+
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/create-update-user")]
+        [HttpPost]
+        [AutoValidateAntiforgeryToken]
+        public async Task<IActionResult> CreateOrUpdateUser(CreateOrUpdateUserViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                if (model.Id is null)
+                {
+                    var userCheck = await _userManager.FindByEmailAsync(model.Email);
+                    if (userCheck != null)
+                    {
+                        ModelState.AddModelError("Email", "Такой емейл адрес уже занят.");
+                        return View(model);
+                    }
+                    User user = new User { Email = model.Email, UserName = model.Email, PhoneNumber = model.Phone, Year = model.Year };
+                    var result = await _userManager.CreateAsync(user, model.Password);
+                    if (result.Succeeded)
+                    {
+                        result = await _userManager.AddToRoleAsync(user, "Client");
+                        return RedirectToAction(nameof(Users));
+                    }
+                    else
+                    {
+                        foreach (var error in result.Errors)
+                        {
+                            ModelState.AddModelError(string.Empty, error.Description);
+                        }
+                    }
+                }
+                else
+                {
+                    User user = await _userManager.FindByIdAsync(model.Id);
+                    if (user != null)
+                    {
+                        if (!user.Email.Equals(model.Email))
+                        {
+                            var userCheck = await _userManager.FindByEmailAsync(model.Email);
+                            if (userCheck != null)
+                            {
+                                ModelState.AddModelError("Email", "Такой емейл адрес уже занят.");
+                                return View(model);
+                            }
+                        }
+                        user.Email = model.Email;
+                        user.UserName = model.Email;
+                        user.Year = model.Year;
+                        user.PhoneNumber = model.Phone;
+                        var result = await _userManager.UpdateAsync(user);
+                        if (result.Succeeded)
+                        {
+                            return RedirectToAction(nameof(Users));
+                        }
+                        else
+                        {
+                            foreach (var error in result.Errors)
+                            {
+                                ModelState.AddModelError(string.Empty, error.Description);
+                            }
+                        }
+                    }
+                }
+            }
+            return View(model);
+        }
+
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/delete-user")]
+        [HttpDelete]
+        public async Task<ActionResult> DeleteUser(string userId)
+        {
+            User user = await _userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                IdentityResult result = await _userManager.DeleteAsync(user);
+            }
+            return Ok();
+        }
+
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/edit-role")]
+        [HttpGet]
+        public async Task<IActionResult> EditRole(string userId)
+        {
+            // отримуємо користувача
+            User user = await _userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                // отримуємо список ролей користувача
+                var userRoles = await _userManager.GetRolesAsync(user);
+                var allRoles = _roleManager.Roles.ToList();
+                ChangeRoleViewModel model = new ChangeRoleViewModel
+                {
+                    UserId = user.Id,
+                    UserEmail = user.Email,
+                    UserRoles = userRoles,
+                    AllRoles = allRoles
+                };
+                return View(model);
+            }
+            return NotFound();
+        }
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/edit-role")]
+        [HttpPost]
+        [AutoValidateAntiforgeryToken]
+        public async Task<IActionResult> EditRole(string userId, List<string> roles)
+        {
+            // отримуємо користувача
+            User user = await _userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                // отримаємо список ролей користувача
+                var userRoles = await _userManager.GetRolesAsync(user);
+
+
+                // отримуємо список ролей, які були додані
+                var addedRoles = roles.Except(userRoles);
+                // отримуємо ролі, які були видалені
+                var removedRoles = userRoles.Except(roles);
+
+
+                await _userManager.AddToRolesAsync(user, addedRoles);
+                await _userManager.RemoveFromRolesAsync(user, removedRoles);
+
+
+                return RedirectToAction(nameof(Users));
+            }
+            return NotFound();
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+        [Route("/panel/categories")]
+        [HttpGet]
+        public IActionResult Categories()
+        {
+            return View();
+        }
+        [Route("/panel/dishes")]
+        [HttpGet]
+        public IActionResult Dishes()
+        {
+            return View();
+        }
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/statistics")]
+        [HttpGet]
+        public IActionResult Statistics()
+        {
+            return View();
+        }
+    }
+
+}
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using PizzaStar.Models;
+
+namespace PizzaStar.Data
+{
+    public class ApplicationContext : IdentityDbContext<User>
+    {
+        public ApplicationContext(DbContextOptions<ApplicationContext> options)
+            : base(options)
+        {
+            Database.EnsureCreated();
+        }
+
+        public DbSet<Category> Categories { get; set; } = null!;
+    }
+}
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using PizzaStar.Models;
+
+namespace PizzaStar.Data
+{
+    public class DbInit
+    {
+        public static async Task InitializeAsync(UserManager<User> userManager, RoleManager<IdentityRole> roleManager)
+        {
+            if (await roleManager.FindByNameAsync("Admin") == null)
+            {
+                await roleManager.CreateAsync(new IdentityRole("Admin"));
+            }
+            if (await roleManager.FindByNameAsync("Editor") == null)
+            {
+                await roleManager.CreateAsync(new IdentityRole("Editor"));
+            }
+            if (await roleManager.FindByNameAsync("Client") == null)
+            {
+                await roleManager.CreateAsync(new IdentityRole("Client"));
+            }
+
+
+            string adminEmail = "admin@gmail.com", adminPassword = "192837";
+            if (await userManager.FindByNameAsync(adminEmail) == null)
+            {
+                User admin = new User
+                {
+                    Email = adminEmail,
+                    UserName = adminEmail,
+                    PhoneNumber = "380970601478",
+                    Year = 1990,
+                    City = "Дніпро",
+                    Address = "Титова 12, кв 33."
+                };
+                IdentityResult result = await userManager.CreateAsync(admin, adminPassword);
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(admin, "Admin");
+                }
+
+
+                User alex = new User
+                {
+                    Email = "alex@gmail.com",
+                    UserName = "alex@gmail.com",
+                    PhoneNumber = "38096546798",
+                    Year = 2001,
+                    City = "Дніпро",
+                    Address = "Карла Маркса 121, кв 32."
+                };
+                result = await userManager.CreateAsync(alex, "qwerty");
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(alex, "Editor");
+                }
+
+
+                User tom = new User
+                {
+                    Email = "tom@gmail.com",
+                    UserName = "tom@gmail.com",
+                    PhoneNumber = "380665459874",
+                    Year = 1995,
+                    City = "Дніпро",
+                    Address = "Тополя 3, будинок 44 кв 7."
+                };
+                result = await userManager.CreateAsync(tom, "1234567AS");
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(tom, "Client");
+                }
+
+
+                User marry = new User
+                {
+                    Email = "marry@in.ua",
+                    UserName = "marry@in.ua",
+                    PhoneNumber = "380964578796",
+                    Year = 1981,
+                    City = "Київ",
+                    Address = "Шевеченко, будинок 7 кв 14."
+                };
+                result = await userManager.CreateAsync(marry, "2S91lds");
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(marry, "Client");
+                }
+            }
+        }
+        public static async Task InitializeContentAsync(ApplicationContext context)
+        {
+            if (!await context.Categories.AnyAsync())
+            {
+                await context.Categories.AddRangeAsync
+                    (
+                        new Category[]{
+                    new Category{ Name = "Піца", Description = "Найсмачніша піца в місті для справжніх гурманів.", DateOfPublication = DateTime.Now },
+                    new Category{ Name = "Салати", Description = "Салати з рибою, м'ясом, овочами - великий вибір меню на будь-який смак.", DateOfPublication = DateTime.Now },
+                    new Category{ Name = "Напої", Description = "Напої є одним із найважливіших елементів культури харчування.", DateOfPublication = DateTime.Now }
+                        }
+                    );
+                await context.SaveChangesAsync();
+            }
+        }
+
+    }
+
+}
+using PizzaStar.Models;
+using PizzaStar.Models.Pages;
+
+namespace PizzaStar.Interfaces
+{
+    public interface ICategory
+    {
+        PagedList<Category> GetAllCategories(QueryOptions options);
+        Task<IEnumerable<Category>> GetAllCategoriesAsync();
+        Task<Category> GetCategoryAsync(int id);
+        Task AddCategoryAsync(Category category);
+        Task DeleteCategoryAsync(Category category);
+        Task EditCategoryAsync(Category category);
+    }
+
+}
+namespace PizzaStar.Models
+{
+    public class Category
+    {
+        public int? Id { get; set; }
+        public string Name { get; set; }
+        public string? Description { get; set; }
+        public string? Image { get; set; }
+        public DateTime DateOfPublication { get; set; }
+    }
+
+}
+namespace PizzaStar.Models
+{
+    public class ErrorViewModel
+    {
+        public string? RequestId { get; set; }
+
+        public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+    }
+}
+using Microsoft.AspNetCore.Identity;
+
+namespace PizzaStar.Models
+{
+    public class User : IdentityUser
+    {
+        public int Year { get; set; }
+        public string? City { get; set; }
+        public string? Address { get; set; }
+    }
+
+}
+using System.Linq.Expressions;
+
+namespace PizzaStar.Models.Pages
+{
+    public class PagedList<T> : List<T>
+    {
+        public PagedList(IQueryable<T> query, QueryOptions options = null)
+        {
+            CurrentPage = options.CurrentPage;
+            PageSize = options.PageSize;
+            Options = options;
+
+
+            if (options != null)
+            {
+                if (!string.IsNullOrEmpty(options.OrderPropertyName))
+                {
+                    query = Order(query, options.OrderPropertyName, options.DescendingOrder);
+                }
+                if (!string.IsNullOrEmpty(options.SearchPropertyName) && !string.IsNullOrEmpty(options.SearchTerm))
+                {
+                    query = Search(query, options.SearchPropertyName, options.SearchTerm);
+                }
+            }
+
+
+            int queryCount = query.Count();
+
+
+            TotalPages = queryCount / PageSize;
+            if (queryCount % PageSize > 0)
+            {
+                TotalPages += 1;
+            }
+
+
+            AddRange(query.Skip((CurrentPage - 1) * PageSize).Take(PageSize));
+        }
+        public int CurrentPage { get; set; }
+        public int PageSize { get; set; }
+        public int TotalPages { get; set; }
+        public QueryOptions Options { get; set; }
+
+
+        public bool HasPreviousPage => CurrentPage > 1;
+        public bool HasNextPage => CurrentPage < TotalPages;
+
+
+        private static IQueryable<T> Search(IQueryable<T> query, string propertyName, string searchTerm)
+        {
+            var parameter = Expression.Parameter(typeof(T), "x");
+            var source = propertyName.Split('.').Aggregate((Expression)parameter, Expression.Property);
+            var body = Expression.Call(source, "Contains", Type.EmptyTypes, Expression.Constant(searchTerm, typeof(string)));
+            var lambda = Expression.Lambda<Func<T, bool>>(body, parameter);
+            return query.Where(lambda);
+        }
+        private static IQueryable<T> Order(IQueryable<T> query, string propertyName, bool desc)
+        {
+            var parameter = Expression.Parameter(typeof(T), "x");
+            var source = propertyName.Split('.').Aggregate((Expression)parameter, Expression.Property);
+            var lambda = Expression.Lambda(typeof(Func<,>).MakeGenericType(typeof(T), source.Type), source, parameter);
+            return typeof(Queryable).GetMethods().Single(e => e.Name == (desc ? "OrderByDescending" : "OrderBy") &&
+            e.IsGenericMethodDefinition &&
+            e.GetGenericArguments().Length == 2 &&
+            e.GetParameters().Length == 2)
+            .MakeGenericMethod(typeof(T), source.Type)
+            .Invoke(null, new object[] { query, lambda }) as IQueryable<T>;
+        }
+    }
+
+}
+namespace PizzaStar.Models.Pages
+{
+    public class QueryOptions
+    {
+        public int CurrentPage { get; set; } = 1;
+        public int PageSize { get; set; } = 25;
+
+        public string OrderPropertyName { get; set; }
+        public bool DescendingOrder { get; set; }
+        public string SearchPropertyName { get; set; }
+        public string SearchTerm { get; set; }
+
+    }
+
+}
+using Microsoft.EntityFrameworkCore;
+using PizzaStar.Data;
+using PizzaStar.Interfaces;
+using PizzaStar.Models;
+using PizzaStar.Models.Pages;
+
+namespace PizzaStar.Repositories
+{
+    public class CategoryRepository : ICategory
+    {
+        private readonly ApplicationContext _applicationContext;
+
+
+        public CategoryRepository(ApplicationContext applicationContext)
+        {
+            _applicationContext = applicationContext;
+        }
+        public PagedList<Category> GetAllCategories(QueryOptions options)
+        {
+            return new PagedList<Category>(_applicationContext.Categories, options);
+        }
+
+
+        public async Task AddCategoryAsync(Category category)
+        {
+            await _applicationContext.Categories.AddAsync(category);
+            await _applicationContext.SaveChangesAsync();
+        }
+
+
+        public async Task DeleteCategoryAsync(Category category)
+        {
+            _applicationContext.Categories.Remove(category);
+            await _applicationContext.SaveChangesAsync();
+        }
+
+
+        public async Task EditCategoryAsync(Category category)
+        {
+            _applicationContext.Entry(category).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+            _applicationContext.Entry(category).Property(e => e.DateOfPublication).IsModified = false;
+            await _applicationContext.SaveChangesAsync();
+        }
+
+
+        public async Task<Category> GetCategoryAsync(int id)
+        {
+            return await _applicationContext.Categories.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id);
+        }
+
+
+        public async Task<IEnumerable<Category>> GetAllCategoriesAsync()
+        {
+            return await _applicationContext.Categories.AsNoTracking().ToListAsync();
+        }
+    }
+
+}
+using Microsoft.AspNetCore.Identity;
+
+namespace PizzaStar.ViewModels
+{
+    public class ChangeRoleViewModel
+    {
+        public string UserId { get; set; }
+        public string UserEmail { get; set; }
+        public List<IdentityRole> AllRoles { get; set; }
+        public IList<string> UserRoles { get; set; }
+        public ChangeRoleViewModel()
+        {
+            AllRoles = new List<IdentityRole>();
+            UserRoles = new List<string>();
+        }
+    }
+
+}
+using System.ComponentModel.DataAnnotations;
+
+namespace PizzaStar.ViewModels
+{
+    public class CreateOrUpdateUserViewModel
+    {
+        [Key]
+        public string? Id { get; set; }
+        [Required(ErrorMessage = "Введіть емейл")]
+        [DataType(DataType.EmailAddress, ErrorMessage = "Не коректний емейл")]
+        [Display(Name = "Email")]
+        public string? Email { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть рік народження")]
+        [Display(Name = "Рік народження")]
+        public int Year { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть номер телефону")]
+        [DataType(DataType.PhoneNumber)]
+        [Display(Name = "Номер телефону")]
+        public string? Phone { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть пароль")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Пароль")]
+        public string? Password { get; set; }
+
+
+        [Required(ErrorMessage = "Підтвердьте пароль")]
+        [Compare("Password", ErrorMessage = "Паролі не збігаються")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Підтвердити пароль")]
+        public string? PasswordConfirm { get; set; }
+    }
+
+}
+using System.ComponentModel.DataAnnotations;
+
+namespace PizzaStar.ViewModels
+{
+    public class LoginViewModel
+    {
+        [Required(ErrorMessage = "Введіть емейл")]
+        [DataType(DataType.EmailAddress, ErrorMessage = "Не коректний емейл")]
+        [Display(Name = "Email")]
+        public string? Email { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть пароль")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Пароль")]
+        public string? Password { get; set; }
+
+
+        [Display(Name = "Запам'ятати?")]
+        public bool RememberMe { get; set; }
+
+
+        public string? ReturnUrl { get; set; }
+    }
+
+}
+using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
+
+namespace PizzaStar.ViewModels
+{
+    public class RegisterViewModel
+    {
+        [Required(ErrorMessage = "Введіть емейл")]
+        [DataType(DataType.EmailAddress, ErrorMessage = "Не коректний емейл")]
+        [Display(Name = "Email")]
+        [Remote(action: "IsEmailInUse", controller: "Account", ErrorMessage = "Емейл адреса вже використовується")]
+        public string? Email { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть рік народження")]
+        [Display(Name = "Рік народження")]
+        public int Year { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть номер телефону")]
+        [DataType(DataType.PhoneNumber)]
+        [Display(Name = "Номер телефону")]
+        public string? Phone { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть пароль")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Пароль")]
+        public string? Password { get; set; }
+
+
+        [Required(ErrorMessage = "Підтвердьте пароль")]
+        [Compare("Password", ErrorMessage = "Паролі не збігаються")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Підтвердити пароль")]
+        public string? PasswordConfirm { get; set; }
+    }
+
+
+
+}

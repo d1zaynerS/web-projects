@@ -1,0 +1,62 @@
+﻿@model RecipeApp.Models.OrderViewModel
+
+<h2>Оформлення замовлення</h2>
+
+<div id="orderContainer">
+    <div style="margin-bottom: 15px;">
+        <h3>@Model.BookTitle</h3>
+        <p>До сплати: @Model.BookPrice грн</p>
+    </div>
+
+    <form id="orderForm">
+        <input type="hidden" id="BookId" value="@Model.BookId" />
+        <input type="hidden" id="BookTitle" value="@Model.BookTitle" />
+        <input type="hidden" id="BookPrice" value="@Model.BookPrice" />
+
+        <div>
+            <label>ПІБ:</label>
+            <input type="text" id="FullName" required />
+        </div>
+        <div>
+            <label>Телефон:</label>
+            <input type="text" id="Phone" required />
+        </div>
+        <div>
+            <label>Місто:</label>
+            <input type="text" id="City" required />
+        </div>
+        <div>
+            <label>Відділення Нової Пошти:</label>
+            <input type="text" id="NovaPoshtaBranch" required />
+        </div>
+        <br />
+        <button type="button" onclick="submitOrder()">Підтвердити замовлення</button>
+    </form>
+</div>
+
+<script>
+    function submitOrder() {
+        var data = {
+            BookId: parseInt(document.getElementById('BookId').value),
+            BookTitle: document.getElementById('BookTitle').value,
+            BookPrice: parseFloat(document.getElementById('BookPrice').value),
+            FullName: document.getElementById('FullName').value,
+            Phone: document.getElementById('Phone').value,
+            City: document.getElementById('City').value,
+            NovaPoshtaBranch: document.getElementById('NovaPoshtaBranch').value
+        };
+
+        fetch('/Shop/ProcessOrder', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('orderContainer').innerHTML = html;
+            })
+            .catch(error => console.error('Error:', error));
+    }
+</script>

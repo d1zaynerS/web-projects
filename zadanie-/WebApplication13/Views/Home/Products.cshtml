@@ -1,0 +1,12 @@
+@{
+    ViewData["Title"] = "Каталог продуктів";
+}
+
+<h2>Каталог продуктів</h2>
+
+@await Component.InvokeAsync("ProductFilter", new { 
+    category = ViewBag.Category, 
+    maxPrice = ViewBag.MaxPrice, 
+    isAvailable = ViewBag.IsAvailable, 
+    sortBy = ViewBag.SortBy 
+})

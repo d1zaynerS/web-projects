@@ -1,0 +1,10 @@
+﻿@model List<RecipeApp.Models.Book>
+
+<h2>Каталог книг</h2>
+
+<div>
+    @foreach (var book in Model)
+    {
+        @await Html.PartialAsync("_BookCard", book)
+    }
+</div>

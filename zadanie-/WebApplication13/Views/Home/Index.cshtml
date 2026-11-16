@@ -1,0 +1,11 @@
+﻿@{
+    ViewData["Title"] = "Головна";
+}
+
+<h2>Галерея зображень</h2>
+@await Component.InvokeAsync("Gallery")
+
+<hr class="my-4" />
+
+<h2>Зв'язатися з нами</h2>
+@await Component.InvokeAsync("ContactForm")

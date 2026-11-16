@@ -1,0 +1,17 @@
+@model WebApplication13.Models.ContactMessage
+
+<form asp-controller="Home" asp-action="Contact" method="post" class="p-3 border rounded">
+    <div class="form-group mb-2">
+        <label asp-for="Name" class="control-label">Ваше ім'я</label>
+        <input asp-for="Name" class="form-control" required />
+    </div>
+    <div class="form-group mb-2">
+        <label asp-for="Email" class="control-label">Email</label>
+        <input asp-for="Email" type="email" class="form-control" required />
+    </div>
+    <div class="form-group mb-3">
+        <label asp-for="Message" class="control-label">Повідомлення</label>
+        <textarea asp-for="Message" class="form-control" rows="4" required></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Надіслати</button>
+</form> 

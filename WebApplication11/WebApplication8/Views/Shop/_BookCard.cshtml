@@ -1,0 +1,9 @@
+﻿@model RecipeApp.Models.Book
+
+<div style="border: 1px solid #ccc; padding: 10px; margin: 10px; width: 200px; display: inline-block;">
+    <img src="@Model.ImageUrl" alt="@Model.Title" width="100" />
+    <h4>@Model.Title</h4>
+    <p>@Model.Description</p>
+    <p><strong>Ціна:</strong> @Model.Price грн</p>
+    <a asp-controller="Shop" asp-action="Order" asp-route-bookId="@Model.Id" style="background: green; color: white; padding: 5px 10px; text-decoration: none;">Купити</a>
+</div>

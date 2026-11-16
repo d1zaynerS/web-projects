@@ -1,0 +1,2459 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using PizzaStar.Models;
+using PizzaStar.ViewModels;
+
+namespace PizzaStar.Controllers
+{
+    public class AccountController : Controller
+    {
+        private readonly UserManager<User> _userManager;
+        private readonly SignInManager<User> _signInManager;
+
+
+        public AccountController(UserManager<User> userManager, SignInManager<User> signInManager)
+        {
+            _userManager = userManager;
+            _signInManager = signInManager;
+        }
+
+
+        [Route("login")]
+        [HttpGet]
+        public IActionResult Login(string returnUrl = null)
+        {
+            if (User.Identity.IsAuthenticated)
+            {
+                return RedirectToAction("Index", "Home");
+            }
+            return View(new LoginViewModel { ReturnUrl = returnUrl });
+        }
+
+
+        [Route("login")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Login(LoginViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var result =
+                    await _signInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, false);
+                if (result.Succeeded)
+                {
+                    // перевіряємо, чи належить URL-адресі додатку
+                    if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
+                    {
+                        return Redirect(model.ReturnUrl);
+                    }
+                    else
+                    {
+                        return RedirectToAction("Index", "Home");
+                    }
+                }
+                else
+                {
+                    ModelState.AddModelError("", "Неправильний логін та (або) пароль");
+                }
+            }
+            return View(model);
+        }
+
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Logout()
+        {
+            // видаляємо автентифікаційні куки
+            await _signInManager.SignOutAsync();
+            return RedirectToAction("Index", "Home");
+        }
+
+
+        [AcceptVerbs("Get", "Post")]
+        [AllowAnonymous]
+        public IActionResult IsEmailInUse(string email)
+        {
+            if (_userManager.Users.Any(e => e.Email!.Equals(email)))
+            {
+                return Json(false);
+            }
+            else
+            {
+                return Json(true);
+            }
+        }
+
+
+        [AcceptVerbs("Get", "Post")]
+        [AllowAnonymous]
+        public IActionResult IsEmailExists(string email)
+        {
+            if (_userManager.Users.Any(e => e.Email!.Equals(email)))
+            {
+                return Json(true);
+            }
+            else
+            {
+                return Json(false);
+            }
+        }
+
+
+        [Route("register")]
+        [HttpGet]
+        public IActionResult Register()
+        {
+            if (User.Identity.IsAuthenticated)
+            {
+                return RedirectToAction("Index", "Home");
+            }
+            return View();
+        }
+
+
+        [Route("register")]
+        [HttpPost]
+        [AutoValidateAntiforgeryToken]
+        public async Task<IActionResult> Register(RegisterViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                User user = new User { Email = model.Email, UserName = model.Email, Year = model.Year, PhoneNumber = model.Phone };
+                // додаємо користувача
+                var result = await _userManager.CreateAsync(user, model.Password);
+                if (result.Succeeded)
+                {
+                    //Установки ролі. Сама роль знаходиться у таблиці AspNetRoles
+                    //якщо таблиця порожня, отримаємо помилку. Обов'язково заповнюємо ролі!
+                    result = await _userManager.AddToRoleAsync(user, "Client");
+                    // встановлення cookie
+                    await _signInManager.SignInAsync(user, false);
+                    return RedirectToAction("Index", "Home");
+                }
+                else
+                {
+                    foreach (var error in result.Errors)
+                    {
+                        ModelState.AddModelError(string.Empty, error.Description);
+                    }
+                }
+            }
+            return View(model);
+        }
+
+    }
+
+}
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using PizzaStar.Interfaces;
+using PizzaStar.Models;
+using PizzaStar.Models.Pages;
+
+namespace PizzaStar.Controllers
+{
+    [Authorize(Roles = "Admin, Editor")]
+    [Route("panel/categories")]
+    public class CategoryController : Controller
+    {
+        private readonly ICategory _categoryRepository;
+
+        public CategoryController(ICategory categoryRepository)
+        {
+            _categoryRepository = categoryRepository;
+        }
+
+        [HttpGet]
+        public IActionResult Index(QueryOptions options)
+        {
+            var categories = _categoryRepository.GetAllCategories(options);
+            return View(categories);
+        }
+
+        [HttpGet("create")]
+        public IActionResult Create()
+        {
+            return View(new Category());
+        }
+
+        [HttpPost("create")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Create(Category category)
+        {
+            if (ModelState.IsValid)
+            {
+                category.DateOfPublication = DateTime.Now;
+                await _categoryRepository.AddCategoryAsync(category);
+                return RedirectToAction(nameof(Index));
+            }
+            return View(category);
+        }
+
+        [HttpGet("edit/{id}")]
+        public async Task<IActionResult> Edit(int id)
+        {
+            var category = await _categoryRepository.GetCategoryAsync(id);
+            if (category == null)
+            {
+                return NotFound();
+            }
+            return View(category);
+        }
+
+        [HttpPost("edit/{id}")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Edit(int id, Category category)
+        {
+            if (id != category.Id)
+            {
+                return BadRequest();
+            }
+
+            if (ModelState.IsValid)
+            {
+                await _categoryRepository.EditCategoryAsync(category);
+                return RedirectToAction(nameof(Index));
+            }
+            return View(category);
+        }
+
+        [HttpPost("delete/{id}")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var category = await _categoryRepository.GetCategoryAsync(id);
+            if (category != null)
+            {
+                await _categoryRepository.DeleteCategoryAsync(category);
+            }
+            return RedirectToAction(nameof(Index));
+        }
+    }
+}
+using Microsoft.AspNetCore.Mvc;
+using PizzaStar.Models;
+using System.Diagnostics;
+
+namespace PizzaStar.Controllers
+{
+    public class HomeController : Controller
+    {
+        [Route("/")]
+        [HttpGet]
+        public IActionResult Index()
+        {
+            return View();
+        }
+    }
+}
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using PizzaStar.Models;
+using PizzaStar.Models.Pages;
+using PizzaStar.ViewModels;
+
+namespace PizzaStar.Controllers
+{
+    [Authorize(Roles = "Admin, Editor")]
+    public class PanelController : Controller
+    {
+        private readonly UserManager<User> _userManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
+
+        public PanelController(UserManager<User> userManager, RoleManager<IdentityRole> roleManager)
+        {
+            _userManager = userManager;
+            _roleManager = roleManager;
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/index")]
+        [HttpGet]
+        public IActionResult Index()
+        {
+            return View();
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/users")]
+        [HttpGet]
+        public IActionResult Users(QueryOptions options)
+        {
+            var pagedList = new PagedList<User>(_userManager.Users, options);
+            return View(pagedList);
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/create-update-user")]
+        [HttpGet]
+        public async Task<IActionResult> CreateOrUpdateUser(string? userId)
+        {
+            if (userId is null)
+            {
+                return View(new CreateOrUpdateUserViewModel());
+            }
+            else
+            {
+                User user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                {
+                    return NotFound();
+                }
+                CreateOrUpdateUserViewModel model = new CreateOrUpdateUserViewModel
+                {
+                    Id = user.Id,
+                    Email = user.Email,
+                    Phone = user.PhoneNumber,
+                    Year = user.Year,
+                };
+                return View(model);
+            }
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/create-update-user")]
+        [HttpPost]
+        [AutoValidateAntiforgeryToken]
+        public async Task<IActionResult> CreateOrUpdateUser(CreateOrUpdateUserViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                if (model.Id is null)
+                {
+                    var userCheck = await _userManager.FindByEmailAsync(model.Email);
+                    if (userCheck != null)
+                    {
+                        ModelState.AddModelError("Email", "Такой емейл адрес уже занят.");
+                        return View(model);
+                    }
+                    User user = new User { Email = model.Email, UserName = model.Email, PhoneNumber = model.Phone, Year = model.Year };
+                    var result = await _userManager.CreateAsync(user, model.Password);
+                    if (result.Succeeded)
+                    {
+                        result = await _userManager.AddToRoleAsync(user, "Client");
+                        return RedirectToAction(nameof(Users));
+                    }
+                    else
+                    {
+                        foreach (var error in result.Errors)
+                        {
+                            ModelState.AddModelError(string.Empty, error.Description);
+                        }
+                    }
+                }
+                else
+                {
+                    User user = await _userManager.FindByIdAsync(model.Id);
+                    if (user != null)
+                    {
+                        if (!user.Email.Equals(model.Email))
+                        {
+                            var userCheck = await _userManager.FindByEmailAsync(model.Email);
+                            if (userCheck != null)
+                            {
+                                ModelState.AddModelError("Email", "Такой емейл адрес уже занят.");
+                                return View(model);
+                            }
+                        }
+                        user.Email = model.Email;
+                        user.UserName = model.Email;
+                        user.Year = model.Year;
+                        user.PhoneNumber = model.Phone;
+                        var result = await _userManager.UpdateAsync(user);
+                        if (result.Succeeded)
+                        {
+                            return RedirectToAction(nameof(Users));
+                        }
+                        else
+                        {
+                            foreach (var error in result.Errors)
+                            {
+                                ModelState.AddModelError(string.Empty, error.Description);
+                            }
+                        }
+                    }
+                }
+            }
+            return View(model);
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/delete-user")]
+        [HttpDelete]
+        public async Task<ActionResult> DeleteUser(string userId)
+        {
+            User user = await _userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                IdentityResult result = await _userManager.DeleteAsync(user);
+            }
+            return Ok();
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/edit-role")]
+        [HttpGet]
+        public async Task<IActionResult> EditRole(string userId)
+        {
+            User user = await _userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                var userRoles = await _userManager.GetRolesAsync(user);
+                var allRoles = _roleManager.Roles.ToList();
+                ChangeRoleViewModel model = new ChangeRoleViewModel
+                {
+                    UserId = user.Id,
+                    UserEmail = user.Email,
+                    UserRoles = userRoles,
+                    AllRoles = allRoles
+                };
+                return View(model);
+            }
+            return NotFound();
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/edit-role")]
+        [HttpPost]
+        [AutoValidateAntiforgeryToken]
+        public async Task<IActionResult> EditRole(string userId, List<string> roles)
+        {
+            User user = await _userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                var userRoles = await _userManager.GetRolesAsync(user);
+
+                var addedRoles = roles.Except(userRoles);
+                var removedRoles = userRoles.Except(roles);
+
+                await _userManager.AddToRolesAsync(user, addedRoles);
+                await _userManager.RemoveFromRolesAsync(user, removedRoles);
+
+                return RedirectToAction(nameof(Users));
+            }
+            return NotFound();
+        }
+
+
+        [Route("/panel/dishes")]
+        [HttpGet]
+        public IActionResult Dishes()
+        {
+            return View();
+        }
+
+        [Authorize(Roles = "Admin")]
+        [Route("/panel/statistics")]
+        [HttpGet]
+        public IActionResult Statistics()
+        {
+            return View();
+        }
+    }
+}
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using PizzaStar.Models;
+
+namespace PizzaStar.Data
+{
+    public class ApplicationContext : IdentityDbContext<User>
+    {
+        public ApplicationContext(DbContextOptions<ApplicationContext> options)
+            : base(options)
+        {
+            Database.EnsureCreated();
+        }
+
+        public DbSet<Category> Categories { get; set; } = null!;
+    }
+}
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using PizzaStar.Models;
+
+namespace PizzaStar.Data
+{
+    public class DbInit
+    {
+        public static async Task InitializeAsync(UserManager<User> userManager, RoleManager<IdentityRole> roleManager)
+        {
+            if (await roleManager.FindByNameAsync("Admin") == null)
+            {
+                await roleManager.CreateAsync(new IdentityRole("Admin"));
+            }
+            if (await roleManager.FindByNameAsync("Editor") == null)
+            {
+                await roleManager.CreateAsync(new IdentityRole("Editor"));
+            }
+            if (await roleManager.FindByNameAsync("Client") == null)
+            {
+                await roleManager.CreateAsync(new IdentityRole("Client"));
+            }
+
+
+            string adminEmail = "admin@gmail.com", adminPassword = "192837";
+            if (await userManager.FindByNameAsync(adminEmail) == null)
+            {
+                User admin = new User
+                {
+                    Email = adminEmail,
+                    UserName = adminEmail,
+                    PhoneNumber = "380970601478",
+                    Year = 1990,
+                    City = "Дніпро",
+                    Address = "Титова 12, кв 33."
+                };
+                IdentityResult result = await userManager.CreateAsync(admin, adminPassword);
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(admin, "Admin");
+                }
+
+
+                User alex = new User
+                {
+                    Email = "alex@gmail.com",
+                    UserName = "alex@gmail.com",
+                    PhoneNumber = "38096546798",
+                    Year = 2001,
+                    City = "Дніпро",
+                    Address = "Карла Маркса 121, кв 32."
+                };
+                result = await userManager.CreateAsync(alex, "qwerty");
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(alex, "Editor");
+                }
+
+
+                User tom = new User
+                {
+                    Email = "tom@gmail.com",
+                    UserName = "tom@gmail.com",
+                    PhoneNumber = "380665459874",
+                    Year = 1995,
+                    City = "Дніпро",
+                    Address = "Тополя 3, будинок 44 кв 7."
+                };
+                result = await userManager.CreateAsync(tom, "1234567AS");
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(tom, "Client");
+                }
+
+
+                User marry = new User
+                {
+                    Email = "marry@in.ua",
+                    UserName = "marry@in.ua",
+                    PhoneNumber = "380964578796",
+                    Year = 1981,
+                    City = "Київ",
+                    Address = "Шевеченко, будинок 7 кв 14."
+                };
+                result = await userManager.CreateAsync(marry, "2S91lds");
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(marry, "Client");
+                }
+            }
+        }
+        public static async Task InitializeContentAsync(ApplicationContext context)
+        {
+            if (!await context.Categories.AnyAsync())
+            {
+                await context.Categories.AddRangeAsync
+                    (
+                        new Category[]{
+                    new Category{ Name = "Піца", Description = "Найсмачніша піца в місті для справжніх гурманів.", DateOfPublication = DateTime.Now },
+                    new Category{ Name = "Салати", Description = "Салати з рибою, м'ясом, овочами - великий вибір меню на будь-який смак.", DateOfPublication = DateTime.Now },
+                    new Category{ Name = "Напої", Description = "Напої є одним із найважливіших елементів культури харчування.", DateOfPublication = DateTime.Now }
+                        }
+                    );
+                await context.SaveChangesAsync();
+            }
+        }
+
+    }
+
+}
+using PizzaStar.Models;
+using PizzaStar.Models.Pages;
+
+namespace PizzaStar.Interfaces
+{
+    public interface ICategory
+    {
+        PagedList<Category> GetAllCategories(QueryOptions options);
+        Task<IEnumerable<Category>> GetAllCategoriesAsync();
+        Task<Category> GetCategoryAsync(int id);
+        Task AddCategoryAsync(Category category);
+        Task DeleteCategoryAsync(Category category);
+        Task EditCategoryAsync(Category category);
+    }
+
+}
+using System.Linq.Expressions;
+
+namespace PizzaStar.Models.Pages
+{
+    public class PagedList<T> : List<T>
+    {
+        public PagedList(IQueryable<T> query, QueryOptions options = null)
+        {
+            CurrentPage = options.CurrentPage;
+            PageSize = options.PageSize;
+            Options = options;
+
+
+            if (options != null)
+            {
+                if (!string.IsNullOrEmpty(options.OrderPropertyName))
+                {
+                    query = Order(query, options.OrderPropertyName, options.DescendingOrder);
+                }
+                if (!string.IsNullOrEmpty(options.SearchPropertyName) && !string.IsNullOrEmpty(options.SearchTerm))
+                {
+                    query = Search(query, options.SearchPropertyName, options.SearchTerm);
+                }
+            }
+
+
+            int queryCount = query.Count();
+
+
+            TotalPages = queryCount / PageSize;
+            if (queryCount % PageSize > 0)
+            {
+                TotalPages += 1;
+            }
+
+
+            AddRange(query.Skip((CurrentPage - 1) * PageSize).Take(PageSize));
+        }
+        public int CurrentPage { get; set; }
+        public int PageSize { get; set; }
+        public int TotalPages { get; set; }
+        public QueryOptions Options { get; set; }
+
+
+        public bool HasPreviousPage => CurrentPage > 1;
+        public bool HasNextPage => CurrentPage < TotalPages;
+
+
+        private static IQueryable<T> Search(IQueryable<T> query, string propertyName, string searchTerm)
+        {
+            var parameter = Expression.Parameter(typeof(T), "x");
+            var source = propertyName.Split('.').Aggregate((Expression)parameter, Expression.Property);
+            var body = Expression.Call(source, "Contains", Type.EmptyTypes, Expression.Constant(searchTerm, typeof(string)));
+            var lambda = Expression.Lambda<Func<T, bool>>(body, parameter);
+            return query.Where(lambda);
+        }
+        private static IQueryable<T> Order(IQueryable<T> query, string propertyName, bool desc)
+        {
+            var parameter = Expression.Parameter(typeof(T), "x");
+            var source = propertyName.Split('.').Aggregate((Expression)parameter, Expression.Property);
+            var lambda = Expression.Lambda(typeof(Func<,>).MakeGenericType(typeof(T), source.Type), source, parameter);
+            return typeof(Queryable).GetMethods().Single(e => e.Name == (desc ? "OrderByDescending" : "OrderBy") &&
+            e.IsGenericMethodDefinition &&
+            e.GetGenericArguments().Length == 2 &&
+            e.GetParameters().Length == 2)
+            .MakeGenericMethod(typeof(T), source.Type)
+            .Invoke(null, new object[] { query, lambda }) as IQueryable<T>;
+        }
+    }
+
+}
+namespace PizzaStar.Models.Pages
+{
+    public class QueryOptions
+    {
+        public int CurrentPage { get; set; } = 1;
+        public int PageSize { get; set; } = 25;
+
+        public string OrderPropertyName { get; set; }
+        public bool DescendingOrder { get; set; }
+        public string SearchPropertyName { get; set; }
+        public string SearchTerm { get; set; }
+
+    }
+
+}
+namespace PizzaStar.Models
+{
+    public class Category
+    {
+        public int? Id { get; set; }
+        public string Name { get; set; }
+        public string? Description { get; set; }
+        public string? Image { get; set; }
+        public DateTime DateOfPublication { get; set; }
+    }
+
+}
+namespace PizzaStar.Models
+{
+    public class ErrorViewModel
+    {
+        public string? RequestId { get; set; }
+
+        public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+    }
+}
+using Microsoft.AspNetCore.Identity;
+
+namespace PizzaStar.Models
+{
+    public class User : IdentityUser
+    {
+        public int Year { get; set; }
+        public string? City { get; set; }
+        public string? Address { get; set; }
+    }
+
+}
+// <autogenerated />
+using System;
+using System.Reflection;
+[assembly: global::System.Runtime.Versioning.TargetFrameworkAttribute(".NETCoreApp,Version=v10.0", FrameworkDisplayName = ".NET 10.0")]
+//------------------------------------------------------------------------------
+// <auto-generated>
+//     Р­С‚РѕС‚ РєРѕРґ СЃРѕР·РґР°РЅ РїСЂРѕРіСЂР°РјРјРѕР№.
+//     РСЃРїРѕР»РЅСЏРµРјР°СЏ РІРµСЂСЃРёСЏ:4.0.30319.42000
+//
+//     РР·РјРµРЅРµРЅРёСЏ РІ СЌС‚РѕРј С„Р°Р№Р»Рµ РјРѕРіСѓС‚ РїСЂРёРІРµСЃС‚Рё Рє РЅРµРїСЂР°РІРёР»СЊРЅРѕР№ СЂР°Р±РѕС‚Рµ Рё Р±СѓРґСѓС‚ РїРѕС‚РµСЂСЏРЅС‹ РІ СЃР»СѓС‡Р°Рµ
+//     РїРѕРІС‚РѕСЂРЅРѕР№ РіРµРЅРµСЂР°С†РёРё РєРѕРґР°.
+// </auto-generated>
+//------------------------------------------------------------------------------
+
+using System;
+using System.Reflection;
+
+[assembly: System.Reflection.AssemblyCompanyAttribute("PizzaStar")]
+[assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
+[assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyProductAttribute("PizzaStar")]
+[assembly: System.Reflection.AssemblyTitleAttribute("PizzaStar")]
+[assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
+
+// Generated by the MSBuild WriteCodeFragment class.
+
+// <auto-generated/>
+global using Microsoft.AspNetCore.Builder;
+global using Microsoft.AspNetCore.Hosting;
+global using Microsoft.AspNetCore.Http;
+global using Microsoft.AspNetCore.Routing;
+global using Microsoft.Extensions.Configuration;
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Hosting;
+global using Microsoft.Extensions.Logging;
+global using System;
+global using System.Collections.Generic;
+global using System.IO;
+global using System.Linq;
+global using System.Net.Http;
+global using System.Net.Http.Json;
+global using System.Threading;
+global using System.Threading.Tasks;
+//------------------------------------------------------------------------------
+// <auto-generated>
+//     Р­С‚РѕС‚ РєРѕРґ СЃРѕР·РґР°РЅ РїСЂРѕРіСЂР°РјРјРѕР№.
+//     РСЃРїРѕР»РЅСЏРµРјР°СЏ РІРµСЂСЃРёСЏ:4.0.30319.42000
+//
+//     РР·РјРµРЅРµРЅРёСЏ РІ СЌС‚РѕРј С„Р°Р№Р»Рµ РјРѕРіСѓС‚ РїСЂРёРІРµСЃС‚Рё Рє РЅРµРїСЂР°РІРёР»СЊРЅРѕР№ СЂР°Р±РѕС‚Рµ Рё Р±СѓРґСѓС‚ РїРѕС‚РµСЂСЏРЅС‹ РІ СЃР»СѓС‡Р°Рµ
+//     РїРѕРІС‚РѕСЂРЅРѕР№ РіРµРЅРµСЂР°С†РёРё РєРѕРґР°.
+// </auto-generated>
+//------------------------------------------------------------------------------
+
+using System;
+using System.Reflection;
+
+[assembly: Microsoft.AspNetCore.Mvc.ApplicationParts.ProvideApplicationPartFactoryAttribute("Microsoft.AspNetCore.Mvc.ApplicationParts.ConsolidatedAssemblyApplicationPartFact" +
+    "ory, Microsoft.AspNetCore.Mvc.Razor")]
+
+// Generated by the MSBuild WriteCodeFragment class.
+
+// <autogenerated />
+using System;
+using System.Reflection;
+[assembly: global::System.Runtime.Versioning.TargetFrameworkAttribute(".NETCoreApp,Version=v10.0", FrameworkDisplayName = ".NET 10.0")]
+//------------------------------------------------------------------------------
+// <auto-generated>
+//     Р­С‚РѕС‚ РєРѕРґ СЃРѕР·РґР°РЅ РїСЂРѕРіСЂР°РјРјРѕР№.
+//     РСЃРїРѕР»РЅСЏРµРјР°СЏ РІРµСЂСЃРёСЏ:4.0.30319.42000
+//
+//     РР·РјРµРЅРµРЅРёСЏ РІ СЌС‚РѕРј С„Р°Р№Р»Рµ РјРѕРіСѓС‚ РїСЂРёРІРµСЃС‚Рё Рє РЅРµРїСЂР°РІРёР»СЊРЅРѕР№ СЂР°Р±РѕС‚Рµ Рё Р±СѓРґСѓС‚ РїРѕС‚РµСЂСЏРЅС‹ РІ СЃР»СѓС‡Р°Рµ
+//     РїРѕРІС‚РѕСЂРЅРѕР№ РіРµРЅРµСЂР°С†РёРё РєРѕРґР°.
+// </auto-generated>
+//------------------------------------------------------------------------------
+
+using System;
+using System.Reflection;
+
+[assembly: System.Reflection.AssemblyCompanyAttribute("PizzaStar")]
+[assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
+[assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyProductAttribute("PizzaStar")]
+[assembly: System.Reflection.AssemblyTitleAttribute("PizzaStar")]
+[assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
+
+// Generated by the MSBuild WriteCodeFragment class.
+
+// <auto-generated/>
+global using Microsoft.AspNetCore.Builder;
+global using Microsoft.AspNetCore.Hosting;
+global using Microsoft.AspNetCore.Http;
+global using Microsoft.AspNetCore.Routing;
+global using Microsoft.Extensions.Configuration;
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Hosting;
+global using Microsoft.Extensions.Logging;
+global using System;
+global using System.Collections.Generic;
+global using System.IO;
+global using System.Linq;
+global using System.Net.Http;
+global using System.Net.Http.Json;
+global using System.Threading;
+global using System.Threading.Tasks;
+//------------------------------------------------------------------------------
+// <auto-generated>
+//     Р­С‚РѕС‚ РєРѕРґ СЃРѕР·РґР°РЅ РїСЂРѕРіСЂР°РјРјРѕР№.
+//     РСЃРїРѕР»РЅСЏРµРјР°СЏ РІРµСЂСЃРёСЏ:4.0.30319.42000
+//
+//     РР·РјРµРЅРµРЅРёСЏ РІ СЌС‚РѕРј С„Р°Р№Р»Рµ РјРѕРіСѓС‚ РїСЂРёРІРµСЃС‚Рё Рє РЅРµРїСЂР°РІРёР»СЊРЅРѕР№ СЂР°Р±РѕС‚Рµ Рё Р±СѓРґСѓС‚ РїРѕС‚РµСЂСЏРЅС‹ РІ СЃР»СѓС‡Р°Рµ
+//     РїРѕРІС‚РѕСЂРЅРѕР№ РіРµРЅРµСЂР°С†РёРё РєРѕРґР°.
+// </auto-generated>
+//------------------------------------------------------------------------------
+
+using System;
+using System.Reflection;
+
+[assembly: Microsoft.AspNetCore.Mvc.ApplicationParts.ProvideApplicationPartFactoryAttribute("Microsoft.AspNetCore.Mvc.ApplicationParts.ConsolidatedAssemblyApplicationPartFact" +
+    "ory, Microsoft.AspNetCore.Mvc.Razor")]
+
+// Generated by the MSBuild WriteCodeFragment class.
+
+using Microsoft.EntityFrameworkCore;
+using PizzaStar.Data;
+using PizzaStar.Interfaces;
+using PizzaStar.Models;
+using PizzaStar.Models.Pages;
+
+namespace PizzaStar.Repositories
+{
+    public class CategoryRepository : ICategory
+    {
+        private readonly ApplicationContext _applicationContext;
+
+
+        public CategoryRepository(ApplicationContext applicationContext)
+        {
+            _applicationContext = applicationContext;
+        }
+        public PagedList<Category> GetAllCategories(QueryOptions options)
+        {
+            return new PagedList<Category>(_applicationContext.Categories, options);
+        }
+
+
+        public async Task AddCategoryAsync(Category category)
+        {
+            await _applicationContext.Categories.AddAsync(category);
+            await _applicationContext.SaveChangesAsync();
+        }
+
+
+        public async Task DeleteCategoryAsync(Category category)
+        {
+            _applicationContext.Categories.Remove(category);
+            await _applicationContext.SaveChangesAsync();
+        }
+
+
+        public async Task EditCategoryAsync(Category category)
+        {
+            _applicationContext.Entry(category).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+            _applicationContext.Entry(category).Property(e => e.DateOfPublication).IsModified = false;
+            await _applicationContext.SaveChangesAsync();
+        }
+
+
+        public async Task<Category> GetCategoryAsync(int id)
+        {
+            return await _applicationContext.Categories.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id);
+        }
+
+
+        public async Task<IEnumerable<Category>> GetAllCategoriesAsync()
+        {
+            return await _applicationContext.Categories.AsNoTracking().ToListAsync();
+        }
+    }
+
+}
+using Microsoft.AspNetCore.Identity;
+
+namespace PizzaStar.ViewModels
+{
+    public class ChangeRoleViewModel
+    {
+        public string UserId { get; set; }
+        public string UserEmail { get; set; }
+        public List<IdentityRole> AllRoles { get; set; }
+        public IList<string> UserRoles { get; set; }
+        public ChangeRoleViewModel()
+        {
+            AllRoles = new List<IdentityRole>();
+            UserRoles = new List<string>();
+        }
+    }
+
+}
+using System.ComponentModel.DataAnnotations;
+
+namespace PizzaStar.ViewModels
+{
+    public class CreateOrUpdateUserViewModel
+    {
+        [Key]
+        public string? Id { get; set; }
+        [Required(ErrorMessage = "Введіть емейл")]
+        [DataType(DataType.EmailAddress, ErrorMessage = "Не коректний емейл")]
+        [Display(Name = "Email")]
+        public string? Email { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть рік народження")]
+        [Display(Name = "Рік народження")]
+        public int Year { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть номер телефону")]
+        [DataType(DataType.PhoneNumber)]
+        [Display(Name = "Номер телефону")]
+        public string? Phone { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть пароль")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Пароль")]
+        public string? Password { get; set; }
+
+
+        [Required(ErrorMessage = "Підтвердьте пароль")]
+        [Compare("Password", ErrorMessage = "Паролі не збігаються")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Підтвердити пароль")]
+        public string? PasswordConfirm { get; set; }
+    }
+
+}
+using System.ComponentModel.DataAnnotations;
+
+namespace PizzaStar.ViewModels
+{
+    public class LoginViewModel
+    {
+        [Required(ErrorMessage = "Введіть емейл")]
+        [DataType(DataType.EmailAddress, ErrorMessage = "Не коректний емейл")]
+        [Display(Name = "Email")]
+        public string? Email { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть пароль")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Пароль")]
+        public string? Password { get; set; }
+
+
+        [Display(Name = "Запам'ятати?")]
+        public bool RememberMe { get; set; }
+
+
+        public string? ReturnUrl { get; set; }
+    }
+
+}
+using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
+
+namespace PizzaStar.ViewModels
+{
+    public class RegisterViewModel
+    {
+        [Required(ErrorMessage = "Введіть емейл")]
+        [DataType(DataType.EmailAddress, ErrorMessage = "Не коректний емейл")]
+        [Display(Name = "Email")]
+        [Remote(action: "IsEmailInUse", controller: "Account", ErrorMessage = "Емейл адреса вже використовується")]
+        public string? Email { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть рік народження")]
+        [Display(Name = "Рік народження")]
+        public int Year { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть номер телефону")]
+        [DataType(DataType.PhoneNumber)]
+        [Display(Name = "Номер телефону")]
+        public string? Phone { get; set; }
+
+
+        [Required(ErrorMessage = "Введіть пароль")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Пароль")]
+        public string? Password { get; set; }
+
+
+        [Required(ErrorMessage = "Підтвердьте пароль")]
+        [Compare("Password", ErrorMessage = "Паролі не збігаються")]
+        [DataType(DataType.Password)]
+        [Display(Name = "Підтвердити пароль")]
+        public string? PasswordConfirm { get; set; }
+    }
+
+
+
+}
+@model LoginViewModel
+
+
+<div class="row justify-content-center">
+    <div class="col-sm-4">
+        <div class="well mt-5">
+            <h3>Авторизація</h3>
+            <form method="post" asp-controller="Account" asp-action="Login" asp-route-returnUrl="@Model.ReturnUrl">
+                <div asp-validation-summary="ModelOnly"></div>
+
+
+                <div class="form-group">
+                    <label asp-for="Email" class="control-label"></label>
+                    <input asp-for="Email" class="form-control" />
+                    <span asp-validation-for="Email" class="text-danger"></span>
+                </div>
+
+
+                <div class="form-group">
+                    <label asp-for="Password" class="control-label"></label>
+                    <input asp-for="Password" class="form-control" />
+                    <span asp-validation-for="Password" class="text-danger"></span>
+                </div>
+
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label asp-for="RememberMe" class="control-label"></label>
+                            <input asp-for="RememberMe" class="form-check" />
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-right">
+                        <a asp-action="" asp-controller="">Забули пароль?</a>
+                    </div>
+                </div>
+
+
+                <div class="mt-3"></div>
+
+
+                <div class="form-group">
+                    @Html.AntiForgeryToken()
+                    <input type="submit" value="Увійти" class="btn btn-primary" />
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+@section Scripts {
+    @*Для валідації моделі на клієнті*@
+    @await Html.PartialAsync("_ValidationScriptsPartial")
+}
+
+
+@model RegisterViewModel
+<div class="row justify-content-center">
+    <div class="col-sm-4">
+        <div class="well mt-5">
+            <h3>Реєстрація</h3>
+            <form method="post" asp-controller="Account" asp-action="Register">
+                <div asp-validation-summary="ModelOnly"></div>
+
+
+                <div class="form-group">
+                    <label asp-for="Email" class="control-label"></label>
+                    <input asp-for="Email" class="form-control" />
+                    <span asp-validation-for="Email" class="text-danger"></span>
+                </div>
+
+
+                <div class="form-group">
+                    <label asp-for="Year" class="control-label"></label>
+                    <input asp-for="Year" class="form-control" />
+                    <span asp-validation-for="Year" class="text-danger"></span>
+                </div>
+
+
+                <div class="form-group">
+                    <label asp-for="Phone" class="control-label"></label>
+                    <input asp-for="Phone" class="form-control" />
+                    <span asp-validation-for="Phone" class="text-danger"></span>
+                </div>
+
+
+                <div class="form-group">
+                    <label asp-for="Password" class="control-label"></label>
+                    <input asp-for="Password" class="form-control" />
+                    <span asp-validation-for="Password" class="text-danger"></span>
+                </div>
+
+
+                <div class="form-group">
+                    <label asp-for="PasswordConfirm" class="control-label"></label>
+                    <input asp-for="PasswordConfirm" class="form-control" />
+                    <span asp-validation-for="PasswordConfirm" class="text-danger"></span>
+                </div>
+
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <a asp-action="Login" asp-controller="Account">Авторизація</a>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-right">
+                        <a asp-action="ForgotPassword" asp-controller="Account">Забули пароль?</a>
+                    </div>
+                </div>
+
+
+                <div class="mt-3"></div>
+
+
+                <div class="form-group">
+                    @Html.AntiForgeryToken()
+                    <input type="submit" value="Завершити" class="btn btn-primary" />
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+@section Scripts {
+    @*Для валідації моделі на клієнті*@
+    @await Html.PartialAsync("_ValidationScriptsPartial")
+}
+@model PizzaStar.Models.Category
+
+@{
+    ViewData["Title"] = "РЎС‚РІРѕСЂРёС‚Рё РєР°С‚РµРіРѕСЂС–СЋ";
+}
+
+<div class="container mt-4">
+    <h2>РЎС‚РІРѕСЂРёС‚Рё РєР°С‚РµРіРѕСЂС–СЋ</h2>
+
+    <form asp-action="Create" method="post">
+        <div class="mb-3">
+            <label asp-for="Name" class="form-label">РќР°Р·РІР° РєР°С‚РµРіРѕСЂС–С—</label>
+            <input asp-for="Name" class="form-control" required />
+            <span asp-validation-for="Name" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Description" class="form-label">РћРїРёСЃ</label>
+            <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+            <span asp-validation-for="Description" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Image" class="form-label">URL Р·РѕР±СЂР°Р¶РµРЅРЅСЏ</label>
+            <input asp-for="Image" class="form-control" placeholder="/images/category.jpg" />
+            <span asp-validation-for="Image" class="text-danger"></span>
+        </div>
+
+        <button type="submit" class="btn btn-success">Р—Р±РµСЂРµРіС‚Рё</button>
+        <a asp-action="Index" class="btn btn-secondary">РЎРєР°СЃСѓРІР°С‚Рё</a>
+    </form>
+</div>
+@model PizzaStar.Models.Category
+
+@{
+    ViewData["Title"] = "Р РµРґР°РіСѓРІР°С‚Рё РєР°С‚РµРіРѕСЂС–СЋ";
+}
+
+<div class="container mt-4">
+    <h2>Р РµРґР°РіСѓРІР°С‚Рё РєР°С‚РµРіРѕСЂС–СЋ</h2>
+
+    <form asp-action="Edit" method="post">
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="DateOfPublication" />
+
+        <div class="mb-3">
+            <label asp-for="Name" class="form-label">РќР°Р·РІР° РєР°С‚РµРіРѕСЂС–С—</label>
+            <input asp-for="Name" class="form-control" required />
+            <span asp-validation-for="Name" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Description" class="form-label">РћРїРёСЃ</label>
+            <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+            <span asp-validation-for="Description" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Image" class="form-label">URL Р·РѕР±СЂР°Р¶РµРЅРЅСЏ</label>
+            <input asp-for="Image" class="form-control" />
+            <span asp-validation-for="Image" class="text-danger"></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Р—Р±РµСЂРµРіС‚Рё Р·РјС–РЅРё</button>
+        <a asp-action="Index" class="btn btn-secondary">РЎРєР°СЃСѓРІР°С‚Рё</a>
+    </form>
+</div>
+@model PizzaStar.Models.Pages.PagedList<PizzaStar.Models.Category>
+
+@{
+    ViewData["Title"] = "РљР°С‚РµРіРѕСЂС–С—";
+}
+
+<div class="container mt-4">
+    <h2>РЈРїСЂР°РІР»С–РЅРЅСЏ РєР°С‚РµРіРѕСЂС–СЏРјРё</h2>
+
+    <div class="mb-3">
+        <a asp-action="Create" class="btn btn-primary">РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІСѓ РєР°С‚РµРіРѕСЂС–СЋ</a>
+    </div>
+
+    <table class="table table-striped table-bordered">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>РќР°Р·РІР°</th>
+                <th>РћРїРёСЃ</th>
+                <th>Р—РѕР±СЂР°Р¶РµРЅРЅСЏ</th>
+                <th>Р”Р°С‚Р° РїСѓР±Р»С–РєР°С†С–С—</th>
+                <th>Р”С–С—</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model != null && Model.Any())
+            {
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td>@item.Id</td>
+                        <td>@item.Name</td>
+                        <td>@item.Description</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(item.Image))
+                            {
+                                <img src="@item.Image" alt="@item.Name" style="max-width: 80px; max-height: 80px;" />
+                            }
+                            else
+                            {
+                                <span>РќРµРјР°С” С„РѕС‚Рѕ</span>
+                            }
+                        </td>
+                        <td>@item.DateOfPublication.ToString("dd.MM.yyyy HH:mm")</td>
+                        <td>
+                            <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning">Р РµРґР°РіСѓРІР°С‚Рё</a>
+
+
+                            <button type="button"
+                                    class="btn btn-sm btn-danger btn-delete-category"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#deleteCategoryModal"
+                                    data-id="@item.Id"
+                                    data-name="@item.Name">
+                                Р’РёРґР°Р»РёС‚Рё
+                            </button>
+                        </td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="6" class="text-center">РљР°С‚РµРіРѕСЂС–С— РІС–РґСЃСѓС‚РЅС–.</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+
+<div class="modal fade" id="deleteCategoryModal" tabindex="-1" aria-labelledby="deleteCategoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteCategoryModalLabel">РџС–РґС‚РІРµСЂРґР¶РµРЅРЅСЏ РІРёРґР°Р»РµРЅРЅСЏ</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="deleteCategoryForm" method="post" asp-action="Delete">
+                <div class="modal-body">
+                    <input type="hidden" id="deleteCategoryId" name="id" />
+                    <p>Р’Рё РґС–Р№СЃРЅРѕ Р±Р°Р¶Р°С”С‚Рµ РІРёРґР°Р»РёС‚Рё РєР°С‚РµРіРѕСЂС–СЋ <strong id="deleteCategoryName"></strong>?</p>
+                    <p class="text-danger mb-0"><small>Р¦СЋ РґС–СЋ РЅРµРјРѕР¶Р»РёРІРѕ СЃРєР°СЃСѓРІР°С‚Рё.</small></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">РЎРєР°СЃСѓРІР°С‚Рё</button>
+                    <button type="submit" class="btn btn-danger">РўР°Рє, РІРёРґР°Р»РёС‚Рё</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const deleteButtons = document.querySelectorAll(".btn-delete-category");
+            const modalCategoryId = document.getElementById("deleteCategoryId");
+            const modalCategoryName = document.getElementById("deleteCategoryName");
+            const deleteForm = document.getElementById("deleteCategoryForm");
+
+            deleteButtons.forEach(button => {
+                button.addEventListener("click", function () {
+                    const id = this.getAttribute("data-id");
+                    const name = this.getAttribute("data-name");
+
+                    modalCategoryId.value = id;
+                    modalCategoryName.textContent = name;
+                    deleteForm.action = `/panel/categories/delete/${id}`;
+                });
+            });
+        });
+    </script>
+}
+@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Welcome</h1>
+    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+</div>
+@{
+    ViewData["Title"] = "Privacy Policy";
+}
+<h1>@ViewData["Title"]</h1>
+
+<p>Use this page to detail your site's privacy policy.</p>
+@{
+    Layout = "_PanelLayout.cshtml";
+    ViewData["Title"] = "Категорії";
+}
+
+
+<div class="breadcrumb-main">
+    <div class="breadcrumb-container clearfix">
+        <h1 class="page-title">Панель управління</h1>
+        <ul class="breadcrumb">
+            <li><a asp-action="Index" asp-controller="Panel">Головна</a></li>
+            <li><a asp-action="Categories" asp-controller="Panel">Категорії</a></li>
+        </ul>
+    </div>
+</div>
+@{
+    Layout = "_PanelLayout.cshtml";
+    ViewData["Title"] = Model.Id is null ? "Додавання користувача" : "Редагування користувача";
+}
+
+
+@model CreateOrUpdateUserViewModel
+
+
+<div class="row justify-content-center">
+    <div class="col-sm-12">
+        <div class="well mt-5">
+            <h3>@(Model.Id is null ? "Додавання користувача" : "Редагування користувача")</h3>
+            <form method="post" asp-controller="Panel" asp-action="CreateOrUpdateUser">
+                <div asp-validation-summary="ModelOnly"></div>
+
+
+                @if (Model.Id is not null)
+                {
+                    <input asp-for="Id" type="hidden" />
+                }
+
+
+                <div class="form-group">
+                    <label asp-for="Email" class="control-label"></label>
+                    <input asp-for="Email" class="form-control" />
+                    <span asp-validation-for="Email" class="text-danger"></span>
+                </div>
+
+
+                <div class="form-group">
+                    <label asp-for="Year" class="control-label"></label>
+                    <input asp-for="Year" class="form-control" />
+                    <span asp-validation-for="Year" class="text-danger"></span>
+                </div>
+
+
+                <div class="form-group">
+                    <label asp-for="Phone" class="control-label"></label>
+                    <input asp-for="Phone" class="form-control" />
+                    <span asp-validation-for="Phone" class="text-danger"></span>
+                </div>
+
+
+                @if (Model.Id is null)
+                {
+                    <div class="form-group">
+                        <label asp-for="Password" class="control-label"></label>
+                        <input asp-for="Password" class="form-control" />
+                        <span asp-validation-for="Password" class="text-danger"></span>
+                    </div>
+
+
+                    <div class="form-group">
+                        <label asp-for="PasswordConfirm" class="control-label"></label>
+                        <input asp-for="PasswordConfirm" class="form-control" />
+                        <span asp-validation-for="PasswordConfirm" class="text-danger"></span>
+                    </div>
+                }
+                else
+                {
+                    <input asp-for="Password" type="hidden" value="Update12!s##8)" />
+                    <input asp-for="PasswordConfirm" type="hidden" value="Update12!s##8)" />
+                }
+
+
+                <div class="mt-3"></div>
+                <div class="form-group">
+                    <input type="submit" value="Зберегти" class="btn btn-primary" />
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+@*Для валідації моделі на клієнті*@
+@await Html.PartialAsync("_ValidationScriptsPartial")
+@{
+    Layout = "_PanelLayout.cshtml";
+    ViewData["Title"] = "Страви";
+}
+
+
+<div class="breadcrumb-main">
+    <div class="breadcrumb-container clearfix">
+        <h1 class="page-title">Панель управління</h1>
+        <ul class="breadcrumb">
+            <li><a asp-action="Index" asp-controller="Panel">Головна</a></li>
+            <li><a asp-action="Dishes" asp-controller="Panel">Продукти</a></li>
+        </ul>
+    </div>
+</div>
+@using Microsoft.AspNetCore.Identity
+@{
+    Layout = "_PanelLayout.cshtml";
+    ViewData["Title"] = "Зміна ролей користувача";
+}
+
+
+<div class="row justify-content-center">
+    <div class="col-sm-12">
+        <div class="well mt-5">
+            <h3>Зміна ролей користувача</h3>
+            <form asp-controller="Panel" asp-action="EditRole" method="post">
+                <input type="hidden" name="userId" value="@Model.UserId" />
+                <div class="form-group">
+                    @foreach (IdentityRole role in Model.AllRoles)
+                    {
+                        <input type="checkbox" name="roles" value="@role.Name"
+                        @(Model.UserRoles.Contains(role.Name) ? "checked=\"checked\"" : "") />
+                        @role.Name
+                        <br />
+                    }
+                </div>
+                <div class="form-group">
+                    @Html.AntiForgeryToken()
+                    <input type="submit" value="Зберегти" class="btn btn-primary" />
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+@*Для валідації моделі на клієнті*@
+@await Html.PartialAsync("_ValidationScriptsPartial")
+@{
+    Layout = "_PanelLayout.cshtml";
+    ViewData["Title"] = "Головна";
+}
+
+
+<div class="breadcrumb-main">
+    <div class="breadcrumb-container clearfix">
+        <h1 class="page-title">Панель управління</h1>
+
+
+        <ul class="breadcrumb">
+            <li><a asp-action="Index" asp-controller="Panel">Головна</a></li>
+        </ul>
+    </div>
+</div>
+
+
+<div class="information-information">
+    <h2 class="title">Добро завітати у панель управління сайтом!</h2>
+    <p class="description">
+        An natum nulla eruditi mei, te qui idque adipisci, nonumy graeci has ad. Cu diam dolor
+        noluisse nec. Nam ex dicta graeco, audire nominati persequeris eu eos. Pri nibh dolor soleat
+        cu, sanctus inermis instructior eum ei. Scripta ceteros sit ex. Et eum alia laudem delectus.
+    </p>
+</div>
+@{
+    Layout = "_PanelLayout.cshtml";
+    ViewData["Title"] = "Статистика";
+}
+
+
+<div class="breadcrumb-main">
+    <div class="breadcrumb-container clearfix">
+        <h1 class="page-title">Панель управління</h1>
+        <ul class="breadcrumb">
+            <li><a asp-action="Index" asp-controller="Panel">Головна</a></li>
+            <li><a asp-action="Statistics" asp-controller="Panel">Статистика</a></li>
+        </ul>
+    </div>
+</div>
+@{
+    Layout = "_PanelLayout.cshtml";
+    ViewData["Title"] = "Користувачі";
+}
+@model IEnumerable<User>
+
+
+<div class="breadcrumb-main">
+    <div class="breadcrumb-container clearfix">
+        <h1 class="page-title">Панель управління</h1>
+        <ul class="breadcrumb">
+            <li><a asp-action="Index" asp-controller="Panel">Головна</a></li>
+            <li><a asp-action="Users" asp-controller="Panel">Користувачі</a></li>
+        </ul>
+    </div>
+</div>
+
+
+<div class="row g-4 py-5 row-cols-1">
+
+
+    <a asp-controller="Panel" asp-action="CreateOrUpdateUser" class="btn btn-primary">Додати нового користувача</a>
+
+
+    <div class="input-group themability-search">
+        @{
+            ViewBag.searches = new string[] { "Email", "PhoneNumber" };
+        }
+        @await Html.PartialAsync("_SearchOptions", Model)
+    </div>
+
+
+
+    <div class="p-5 mb-4 bg-light rounded-3 ovx table-responsive">
+        <table class="table">
+            <tr><th>Email</th><th>Номер телефону</th><th>Рік народження</th><th></th><th></th><th></th></tr>
+            @foreach (var user in Model)
+            {
+                @*Обов'язково прописуємо цей атрибут
+            За допомогою нього ми видалимо цей рядок
+            використовуючи JavaScript*@
+                <tr data-rowid="@user.Id">
+                    <td>@user.Email</td>
+                    <td>@user.PhoneNumber</td>
+                    <td>@user.Year</td>
+                    <td><a class="btn btn-sm btn-primary" asp-action="EditRole" asp-controller="Panel" asp-route-userid="@user.Id">Роль</a></td>
+                    <td><a class="btn btn-sm btn-primary" asp-action="CreateOrUpdateUser" asp-controller="Panel" asp-route-userId="@user.Id">Змінити</a></td>
+                    <td>
+                        @*Обов'язково прописуємо onClick та метод, який оброблятиме клік*@
+                        <button onclick="deleteUser('@user.Id')" class="btn btn-sm btn-danger">Видалити</button>
+                    </td>
+                </tr>
+            }
+        </table>
+
+
+        <div class="text-center">
+            @await Html.PartialAsync("_Pages", Model)
+        </div>
+
+
+        @await Html.PartialAsync("_Modal", "Видалити вибраного користувача?")
+
+
+        @section Scripts {
+            <script>
+                        async function deleteUser(userId) {
+
+
+                            const btnYes = document.getElementById('btn-Yes');
+                            const btnNo = document.getElementById('btn-No');
+
+
+                            $('#confirmModal').modal('show');
+
+
+                            //Якщо натиснули так, видаляємо
+                            btnYes.onclick = () => {
+                                const deleteItem = fetch(`/panel/delete-user/?userId=${userId}`, { method: 'DELETE' })
+                                    .then(response => {
+                                        if (!response.ok) {
+                                            throw new Error('Network response was not ok');
+                                        }
+                                        //Видаляємо рядок
+                                        document.querySelector("tr[data-rowid='" + userId + "']").remove();
+                                        //Закриваємо модальне вікно
+                                        $('#confirmModal').modal('hide');
+                                    })
+                                    .catch(error => {
+                                        console.error('There was a problem with the fetch operation:', error);
+                                        // Обробка помилки видалення
+                                    });
+                            }
+                            //Якщо натиснули ні, приховуємо
+                            btnNo.onclick = () => {
+                                $('#confirmModal').modal('hide');
+                            }
+                        }
+            </script>
+        }
+
+
+    </div>
+</div>
+
+
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+
+<div class="blog-section">
+    <div id="checkout-cart" class="container">
+        <div class="row">
+
+
+            <aside id="column-left" class="col-sm-3">
+                <div class="category-content">
+                    <div class="box-category">
+                        <h3 class="toggled relative">Налаштування</h3>
+                        <ul class="list-unstyled parent" id="select-category">
+                            <li>
+                                <a asp-action="Index" asp-controller="Panel" class="list-group-item">Головна</a>
+                            </li>
+                            <li>
+                                <a asp-action="Categories" asp-controller="Panel" class="list-group-item">Категорії</a>
+                            </li>
+                            <li>
+                                <a asp-action="Dishes" asp-controller="Panel" class="list-group-item">Продукти</a>
+                            </li>
+                            @if (User.IsInRole("Admin"))
+                            {
+                                <li>
+                                    <a asp-action="Users" asp-controller="Panel" class="list-group-item">Користувачі</a>
+                                </li>
+                                <li>
+                                    <a asp-action="Statistics" asp-controller="Panel" class="list-group-item">Статистика</a>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </aside>
+
+
+            <div id="content" class="col-sm-9 all-blog">
+                @*Основний вміст сторінки*@
+                @RenderBody()
+            </div>
+
+
+        </div>
+    </div>
+</div>
+<!-- Секція для підвантаження скриптів із інших уявлень -->
+@await RenderSectionAsync("Scripts", required: false)
+@model ErrorViewModel
+@{
+    ViewData["Title"] = "Error";
+}
+
+<h1 class="text-danger">Error.</h1>
+<h2 class="text-danger">An error occurred while processing your request.</h2>
+
+@if (Model.ShowRequestId)
+{
+    <p>
+        <strong>Request ID:</strong> <code>@Model.RequestId</code>
+    </p>
+}
+
+<h3>Development Mode</h3>
+<p>
+    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
+</p>
+<p>
+    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
+    It can result in displaying sensitive information from exceptions to end users.
+    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
+    and restarting the app.
+</p>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - PizzaStar</title>
+    <meta name="description" content="PizzaStar - Вкусная пица!">
+
+    <!-- Стили -->
+    @await Html.PartialAsync("_StylesPartial")
+    <!-- / Стили -->
+
+</head>
+<body class="homepage">
+    <div class="loader"></div>
+
+    <!-- Header Область Начало -->
+    <nav id="top">
+        <div class="container">
+            <div class="top-left">
+                <div class="contact-info">
+                    <a href="callto:+380970601478">
+                        <i class="fa fa-phone"></i>
+                        <span>+38 (097) 060-14-78</span>
+                    </a>
+                </div>
+            </div>
+            <div class="top-right">
+                <div class="pull-left">
+                    <form action="" method="post" enctype="multipart/form-data" id="form-language">
+                        <div class="btn-group">
+                            <button class="btn btn-link dropdown-toggle" data-toggle="dropdown">
+
+                                <img src="assets/images/en-gb.png" alt="English" title="English" class="language-img">
+                                <span class="drop-text">Языки</span>
+                                <span class="code">Укр-Рус</span>
+                                <i class="fa fa-angle-down"></i>
+                            </button>
+                            <ul class="dropdown-menu language-dropdown dropdown-menu-right">
+                                <li>
+                                    <button class="btn btn-link btn-block language-select" type="button" name="en-gb">
+                                        <img src="assets/images/en-gb.png" alt="English" title="English">
+                                        Украинский
+                                    </button>
+                                </li>
+                                <li>
+                                    <button class="btn btn-link btn-block language-select" type="button" name="ar">
+                                        <img src="assets/images/ar.png" alt="Arabic" title="Arabic">
+                                        Русский
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <input type="hidden" name="code" value="">
+                        <input type="hidden" name="redirect" value="">
+                    </form>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <header class="home">
+        <div class="container">
+            <div class="header-inner">
+                <div class="header-left">
+                    <div id="logo">
+                        <a href="#">
+                            <img src="~/assets/images/logo-white.png" title="Your Store" alt="Your Store" class="img-responsive">
+                        </a>
+                    </div>
+                </div>
+                <div class="header-center">
+                    <div class="themability_megamenu-style-dev">
+                        <div class="responsive themability_default">
+
+                            <nav class="navbar-default">
+                                <div class=" container-themability_megamenu   horizontal ">
+                                    <div class="navbar-header">
+                                        <button type="button" id="show-themability_megamenu" data-toggle="collapse" class="navbar-toggle">
+                                            <span class="icon-bar"></span>
+                                            <span class="icon-bar"></span>
+                                            <span class="icon-bar"></span>
+                                        </button>
+                                    </div>
+
+                                    <div class="themability_megamenu-wrapper megamenu_typeheader">
+
+                                        <span id="remove-themability_megamenu" class="fa fa-times"></span>
+
+                                        <div class="themability_megamenu-pattern">
+                                            <div class="container">
+                                                <ul class="themability_megamenu" data-megamenuid="55" data-transition="slide" data-animationtime="500">
+
+                                                    <li class="home current-active active-first">
+                                                        <a href="#">
+                                                            <span><strong> Главная </strong></span>
+                                                        </a>
+                                                    </li>
+
+                                                    <li class="with-sub-menu click">
+                                                        <p class="close-menu"></p>
+                                                        <a href="#" class="clearfix">
+                                                            <strong>
+                                                                Пицца
+                                                            </strong>
+
+                                                            <b class="fa fa-angle-down"></b>
+                                                        </a>
+
+                                                        <div class="sub-menu">
+                                                            <div class="content">
+                                                                <div class="row">
+                                                                    <div class="col-sm-12">
+                                                                        <div class="categories hot">
+                                                                            <div class="row">
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">Pasta</a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">Fedelini</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Lasagna</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Perciatelli</a>
+                                                                                                    </li>
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">
+                                                                                                    french
+                                                                                                    fries
+                                                                                                </a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">Sachets</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Ziti</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Rotelle</a>
+                                                                                                    </li>
+
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">Drink</a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">sosyo</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">coca-cola</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">
+                                                                                                            Cheddar
+                                                                                                            Cheese
+                                                                                                        </a>
+                                                                                                    </li>
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+
+                                                    <li class="with-sub-menu click">
+                                                        <p class="close-menu"></p>
+                                                        <a href="#" class="clearfix">
+                                                            <strong>
+                                                                Салаты
+                                                            </strong>
+
+                                                            <b class="fa fa-angle-down"></b>
+                                                        </a>
+
+                                                        <div class="sub-menu">
+                                                            <div class="content">
+                                                                <div class="row">
+                                                                    <div class="col-sm-12">
+                                                                        <div class="categories hot">
+                                                                            <div class="row">
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">Pasta</a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">Fedelini</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Lasagna</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Perciatelli</a>
+                                                                                                    </li>
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">
+                                                                                                    french
+                                                                                                    fries
+                                                                                                </a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">Sachets</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Ziti</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Rotelle</a>
+                                                                                                    </li>
+
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">Drink</a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">sosyo</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">coca-cola</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">
+                                                                                                            Cheddar
+                                                                                                            Cheese
+                                                                                                        </a>
+                                                                                                    </li>
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+
+                                                    <li class="with-sub-menu click">
+                                                        <p class="close-menu"></p>
+                                                        <a href="#" class="clearfix">
+                                                            <strong>
+                                                                Напитки
+                                                            </strong>
+
+                                                            <b class="fa fa-angle-down"></b>
+                                                        </a>
+
+                                                        <div class="sub-menu">
+                                                            <div class="content">
+                                                                <div class="row">
+                                                                    <div class="col-sm-12">
+                                                                        <div class="categories hot">
+                                                                            <div class="row">
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">Pasta</a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">Fedelini</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Lasagna</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Perciatelli</a>
+                                                                                                    </li>
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">
+                                                                                                    french
+                                                                                                    fries
+                                                                                                </a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">Sachets</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Ziti</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">Rotelle</a>
+                                                                                                    </li>
+
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="col-sm-3 static-menu">
+                                                                                    <div class="menu">
+                                                                                        <ul>
+                                                                                            <li>
+                                                                                                <a href="#" class="main-menu">Drink</a>
+                                                                                                <ul>
+                                                                                                    <li>
+                                                                                                        <a href="#">sosyo</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">coca-cola</a>
+                                                                                                    </li>
+                                                                                                    <li>
+                                                                                                        <a href="#">
+                                                                                                            Cheddar
+                                                                                                            Cheese
+                                                                                                        </a>
+                                                                                                    </li>
+                                                                                                </ul>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+
+                                                    <li>
+                                                        <p class="close-menu"></p>
+                                                        <a href="" class="clearfix">
+                                                            <strong>
+                                                                Контакты
+                                                            </strong>
+                                                        </a>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </nav>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="header-right">
+                    <div class="search-content">
+                        <div class="search-btn-outer hidden-lg hidden-md">
+                            <i class="fa fa-search"></i>
+                        </div>
+                        <div class="header-search">
+                            <div id="themabilitySearch" class="input-group themability-search">
+                                <input type="text" name="search" value="" placeholder="Поиск..." class="form-control input-lg ui-autocomplete-input" />
+                                <span class="btn-search input-group-btn">
+                                    <button type="button" class="btn btn-default btn-lg"><i class="fa fa-search"></i></button>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cart-content">
+                        <div id="cart" class="btn-group btn-block">
+                            <button type="button" data-toggle="dropdown" data-loading-text="<i class='fa fa-spinner fa-spin' aria-hidden='true'></i>"
+                                    class="btn btn-inverse btn-block btn-lg dropdown-toggle">
+                                <i class="fa fa-shopping-cart"></i> <span id="cart-total">2</span>
+                            </button>
+
+                        </div>
+                    </div>
+
+                    <div id="header_ac" class="dropdown">
+                        <a href="#" title="My Account" class="dropdown-toggle" data-toggle="dropdown">
+                            <i class="fa fa-user"></i><span class="hidden">My Account</span><span class="caret hidden"></span>
+                        </a>
+                        @if (User.Identity.IsAuthenticated)
+                        {
+                            <ul class="dropdown-menu dropdown-menu-right account-link-toggle">
+                                <li>
+                                    <a asp-controller="Account" asp-action="">@User.Identity.Name</a>
+                                </li>
+                                @if (User.IsInRole("Admin") || User.IsInRole("Editor"))
+                                {
+                                    <li>
+                                        <a asp-controller="Panel" asp-action="Index">Панель управління</a>
+                                    </li>
+                                }
+                                <li>
+                                    <a asp-controller="Account" asp-action="">Мої замовлення</a>
+                                </li>
+                                <li class="text-sm-center">
+                                    <form method="post" asp-controller="Account" asp-action="Logout">
+                                        <input class="btn btn-dark" type="submit" value="Вихід" />
+                                    </form>
+                                </li>
+                            </ul>
+                        }
+                        else
+                        {
+                            <ul class="dropdown-menu dropdown-menu-right account-link-toggle">
+                                <li>
+                                    <a asp-controller="Account" asp-action="Register">Реєстрація</a>
+                                </li>
+                                <li>
+                                    <a asp-controller="Account" asp-action="Login">Авторизація</a>
+                                </li>
+                            </ul>
+                        }
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </header>
+    <!-- Header Область Конец -->
+
+    <div class="container-full ">
+        @RenderBody()
+    </div>
+
+    <!-- Footer Область Начало -->
+    <footer>
+        <div class="container">
+            <div class="footer-top">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="position-footer-left">
+                            <h5 class="toggled title">
+                                Контакты
+                            </h5>
+                            <ul class="list-unstyled">
+                                <li>
+                                    <div class="site">
+                                        <div class="contact_title"><i class="fa-solid fa-location-dot"></i></div>
+                                        <div class="contact_site">Украина, Днепр, проспект Свободы 23.</div>
+                                    </div>
+                                </li>
+                                <li>
+                                    <div class="phone">
+                                        <div class="contact_title"><i class="fa fa-phone"></i></div>
+                                        <div class="contact_site">+38 (097) 060-14-78</div>
+                                    </div>
+                                </li>
+
+                                <li>
+                                    <div class="email">
+                                        <div class="contact_title"><i class="fa fa-envelope"></i></div>
+                                        <div class="contact_site">
+                                            <a href="mailto:email@gmail.com" class="contact_site">
+                                                <span class="__cf_email__">
+                                                    email@gmail.com
+                                                </span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <h5 class="toggled">Меню</h5>
+                        <ul class="list-unstyled">
+                            <li><a href="#" class="contact_site">Главная</a></li>
+                            <li><a href="#" class="contact_site">Пицца</a></li>
+                            <li><a href="#" class="contact_site">Салаты</a></li>
+                            <li><a href="#" class="contact_site">Напитки</a></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-3">
+                        <h5 class="toggled">Дополнительно</h5>
+                        <ul class="list-unstyled">
+                            <li><a href="#" class="contact_site">Доставка</a></li>
+                            <li><a href="#" class="contact_site">Контакты</a></li>
+                            <li><a href="#">Карта сайта</a></li>
+                            <li><a href="#">Мой Аккаунт</a></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="position-footer-right">
+                            <div class="follow-link">
+                                <h4>Социальные сети</h4>
+                                <div class="social-media">
+                                    <a href="index.html#" title="facebook"><i class="fa-brands fa-facebook-f"></i></a>
+                                    <a href="index.html#" title="facebook"><i class="fa-brands fa-twitter"></i></a>
+                                    <a href="index.html#" title="facebook"><i class="fa-brands fa-instagram"></i></a>
+                                    <a href="index.html#" title="facebook"><i class="fa-brands fa-pinterest-p"></i></a>
+                                    <a href="index.html#" title="facebook"><i class="fa-brands fa-youtube"></i></a>
+                                </div>
+                            </div>
+                            <div class="payment-link">
+                                <h4>Платежные системы</h4>
+                                <div class="payment-method">
+                                    <a><i class="fa-brands fa-cc-visa"></i></a>
+                                    <a><i class="fa fa-credit-card"></i></a>
+                                    <a><i class="fa-brands fa-cc-mastercard"></i></a>
+                                    <a><i class="fa-brands fa-cc-paypal"></i></a>
+                                    <a><i class="fa-brands fa-cc-discover"></i></a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="copyright"><a href="index.html#"></a>© 2023 PizzaStar - Все права защищены.</p>
+        </div>
+    </footer>
+    <!-- Footer Область Конец -->
+    <!-- Скрипты -->
+    <!-- Секция для подгрузки скриптов из других представлений -->
+    @await RenderSectionAsync("Scripts", required: false)
+    <!-- Секция для подгрузки основных скриптов из частичного представления -->
+    @await Html.PartialAsync("_ScriptsPartial")
+    <!-- / Скрипты -->
+
+</body>
+</html>
+@model string
+
+
+<div class="modal" id="confirmModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Підтвердьте дія</h5>
+            </div>
+            <div class="modal-body">
+                <p>@Model</p>
+            </div>
+            <div class="modal-footer">
+                @*Обов'язково прописуємо ID*@
+                <button id="btn-Yes" class="btn btn-secondary">Видалити</button>
+                <button id="btn-No" class="btn btn-secondary" data-dismiss="modal">Скасування</button>
+            </div>
+        </div>
+    </div>
+</div>
+<form method="get" class="form-inline m-3" id="pageform">
+    <button name="options.CurrentPage" value="@(Model.CurrentPage - 1)"
+            class="btn btn-primary @(!Model.HasPreviousPage ? "disabled" : "")" type="submit">
+        Назад
+    </button>
+
+
+    @for (int i = 1; i <= 3 && i <= Model.TotalPages; i++)
+    {
+        <button name="options.CurrentPage" value="@i" type="submit"
+                class="btn btn-outline-primary @(Model.CurrentPage == i ? "active" : "")">
+            @i
+        </button>
+    }
+    @if (Model.CurrentPage > 3 && Model.TotalPages - Model.CurrentPage >= 3)
+    {
+        @:...
+        <button class="btn btn-outline-primary active">@Model.CurrentPage</button>
+    }
+    @if (Model.TotalPages > 3)
+    {
+        @:...
+        @for (int i = Math.Max(4, Model.TotalPages - 2); i <= Model.TotalPages; i++)
+        {
+            <button name="options.CurrentPage" value="@i" type="submit"
+                    class="btn btn-outline-primary @(Model.CurrentPage == i ? "active" : "")">
+                @i
+            </button>
+        }
+    }
+    <button name="options.CurrentPage" value="@(Model.CurrentPage + 1)" type="submit"
+            class="btn btn-primary @(!Model.HasNextPage ? "disabled" : "")">
+        Вперед
+    </button>
+
+
+    <select name="options.PageSize" class="my-form-control">
+        @foreach (int val in new int[] { 2, 25, 50, 100 })
+        {
+            <option value="@val" selected="@(Model.PageSize == val)">@val</option>
+        }
+    </select>
+    <input type="hidden" name="options.CurrentPage" value="1" />
+    <button type="submit" class="btn btn-outline-primary">Изменить размер страницы</button>
+</form>
+<script src="~/assets/js/vendors/jquery-2.1.1.min.js" type="text/javascript"></script>
+<script type="text/javascript" src="~/assets/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="~/assets/js/owl.carousel.min.js"></script>
+<script src="~/assets/js/themability_megamenu.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wow/1.1.2/wow.min.js" type="text/javascript"></script>
+<script type="text/javascript">new WOW().init();</script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css" rel="stylesheet" />
+<script type="text/javascript" src="~/assets/js/theme.js"></script>
+<select form="pageform" name="options.searchpropertyname" class="form-control">
+    @foreach (string s in ViewBag.searches as string[])
+    {
+        <option value="@s" selected="@(Model.Options.SearchPropertyName == s)">
+            @(
+                s switch
+                {
+                    "Email" => "Емейл",
+                    "PhoneNumber" => "Телефон",
+                    _ => s
+                }
+                )
+        </option>
+    }
+</select>
+
+
+<input form="pageform" name="options.searchterm" value="@Model.Options.SearchTerm" placeholder="Пошук..." class="form-control input-lg ui-autocomplete-input" />
+<span class="btn-search input-group-btn">
+    <button form="pageform" type="submit" class="btn btn-default btn-lg"><i class="fa fa-search"></i></button>
+</span>
+<link rel="icon" type="image/png" href="~/assets/images/favicon.png">
+<link rel="stylesheet" href="~/assets/css/bootstrap.min.css">
+<link rel="stylesheet" href="~/assets/css/owl.carousel.css" type="text/css" media="all" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" />
+<link rel="stylesheet" href="~/assets/fonts/themability-font.css" type="text/css" media="all">
+<link rel="stylesheet" href="~/assets/css/style.css" type="text/css" media="all" />
+<link href="https://fonts.googleapis.com/css2?family=Lobster&family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="~/assets/css/themability_megamenu.css">
+<script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
+<script src="~/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.min.js"></script>
+@using PizzaStar
+@using PizzaStar.Models
+@using PizzaStar.ViewModels
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@{
+    Layout = "_Layout";
+}
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using PizzaStar.Data;
+using PizzaStar.Models;
+using PizzaStar.Interfaces;
+
+namespace PizzaStar
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+            var builder = WebApplication.CreateBuilder(args);
+
+            IConfigurationRoot _confString = new ConfigurationBuilder().SetBasePath(AppDomain.CurrentDomain.BaseDirectory).AddJsonFile("appsettings.json").Build();
+            builder.Services.AddDbContext<ApplicationContext>(options => options.UseSqlServer(_confString.GetConnectionString("DefaultConnection")));
+            builder.Services.AddIdentity<User, IdentityRole>(opts =>
+            {
+                opts.Password.RequiredLength = 5;   // РјС–РЅС–РјР°Р»СЊРЅР° РґРѕРІР¶РёРЅР°
+                opts.Password.RequireNonAlphanumeric = false;   //С‡Рё РїРѕС‚СЂС–Р±РЅС– Р°Р»С„Р°РІС–С‚РЅРѕ-С†РёС„СЂРѕРІС– СЃРёРјРІРѕР»Рё
+                opts.Password.RequireLowercase = false; // С‡Рё РїРѕС‚СЂС–Р±РЅС– СЃРёРјРІРѕР»Рё РІ РЅРёР¶РЅСЊРѕРјСѓ СЂРµРіС–СЃС‚СЂС–
+                opts.Password.RequireUppercase = false; //С‡Рё РїРѕС‚СЂС–Р±РЅС– СЃРёРјРІРѕР»Рё Сѓ РІРµСЂС…РЅСЊРѕРјСѓ СЂРµРіС–СЃС‚СЂС–
+                opts.Password.RequireDigit = false; //С‡Рё РїРѕС‚СЂС–Р±РЅС– С†РёС„СЂРё
+            }).AddEntityFrameworkStores<ApplicationContext>();
+
+            // Add services to the container.
+            builder.Services.AddScoped<PizzaStar.Interfaces.ICategory, PizzaStar.Repositories.CategoryRepository>();
+            builder.Services.AddControllersWithViews();
+
+            var app = builder.Build();
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var services = scope.ServiceProvider;
+                try
+                {
+                    var userManager = services.GetRequiredService<UserManager<User>>();
+                    var rolesManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+                    DbInit.InitializeAsync(userManager, rolesManager).Wait();
+
+                    var applicationContext = services.GetRequiredService<ApplicationContext>();
+                    DbInit.InitializeContentAsync(applicationContext).Wait();
+
+                }
+                catch (Exception ex)
+                {
+                    var logger = services.GetRequiredService<ILogger<Program>>();
+                    logger.LogError(ex, "An error occurred while seeding the database.");
+                }
+            }
+
+
+            // Configure the HTTP request pipeline.
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseExceptionHandler("/Home/Error");
+                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+                app.UseHsts();
+            }
+
+            app.UseHttpsRedirection();
+            app.UseRouting();
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.MapStaticAssets();
+            app.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Home}/{action=Index}/{id?}")
+                .WithStaticAssets();
+
+            app.Run();
+        }
+    }
+}

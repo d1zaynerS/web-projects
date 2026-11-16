@@ -1,0 +1,89 @@
+﻿@model RecipeApp.Models.RecipeViewModel
+
+<h2>Редагування рецепта</h2>
+
+@if (ViewBag.Success != null)
+{
+    <div style="color: green; font-weight: bold;">@ViewBag.Success</div>
+}
+
+<form asp-action="Edit" method="post">
+    <input type="hidden" asp-for="Id" />
+
+    <div>
+        <label>Назва рецепта:</label>
+        <input asp-for="Title" class="form-control" />
+    </div>
+
+    <div>
+        <label>Опис:</label>
+        <textarea asp-for="Description" class="form-control"></textarea>
+    </div>
+
+    <h3>Інгредієнти</h3>
+    <table id="ingredientsTable" border="1" style="width:100%; text-align:left;">
+        <thead>
+            <tr>
+                <th>Назва</th>
+                <th>Кількість</th>
+                <th>Одиниця виміру</th>
+                <th>Дія</th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (int i = 0; i < Model.Ingredients.Count; i++)
+            {
+                <tr>
+                    <td>
+                        <input name="Ingredients[@i].Name" value="@Model.Ingredients[i].Name" class="form-control" />
+                    </td>
+                    <td>
+                        <input type="number" step="0.1" name="Ingredients[@i].Quantity" value="@Model.Ingredients[i].Quantity" class="form-control" />
+                    </td>
+                    <td>
+                        <input name="Ingredients[@i].Unit" value="@Model.Ingredients[i].Unit" class="form-control" />
+                    </td>
+                    <td>
+                        <button type="button" onclick="removeRow(this)">Remove</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <br />
+    <button type="button" id="addIngredientBtn">Add Ingredient</button>
+    <br /><br />
+    <button type="submit">Зберегти рецепт</button>
+</form>
+
+<script>
+    document.getElementById('addIngredientBtn').addEventListener('click', function () {
+        var table = document.getElementById('ingredientsTable').getElementsByTagName('tbody')[0];
+        var index = table.rows.length;
+
+        var row = table.insertRow(index);
+        row.innerHTML = `
+            <td><input name="Ingredients[${index}].Name" class="form-control" /></td>
+            <td><input type="number" step="0.1" name="Ingredients[${index}].Quantity" class="form-control" /></td>
+            <td><input name="Ingredients[${index}].Unit" class="form-control" /></td>
+            <td><button type="button" onclick="removeRow(this)">Remove</button></td>
+        `;
+    });
+
+    function removeRow(btn) {
+        var row = btn.parentNode.parentNode;
+        row.parentNode.removeChild(row);
+        reindexRows();
+    }
+
+    function reindexRows() {
+        var rows = document.getElementById('ingredientsTable').getElementsByTagName('tbody')[0].rows;
+        for (var i = 0; i < rows.length; i++) {
+            var inputs = rows[i].getElementsByTagName('input');
+            inputs[0].name = `Ingredients[${i}].Name`;
+            inputs[1].name = `Ingredients[${i}].Quantity`;
+            inputs[2].name = `Ingredients[${i}].Unit`;
+        }
+    }
+</script>

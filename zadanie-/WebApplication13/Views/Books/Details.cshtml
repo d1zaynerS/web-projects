@@ -1,0 +1,50 @@
+@model WebApplication13.Models.Book
+
+@{
+    ViewData["Title"] = Model.Title;
+}
+
+<h2>@Model.Title</h2>
+<p><strong>Автор:</strong> @Model.Author | <strong>Жанр:</strong> @Model.Genre | <strong>Ціна:</strong> @Model.Price грн</p>
+
+<h4>Зображення книги</h4>
+<div class="d-flex mb-4">
+    @foreach (var img in Model.Images)
+    {
+        <img src="@img.FilePath" class="img-thumbnail me-2" style="width: 150px; height: 150px; object-fit: cover;" />
+    }
+</div>
+
+<hr />
+
+<h4>Коментарі</h4>
+@if (Model.Comments.Any())
+{
+    <ul class="list-group mb-4">
+        @foreach (var comment in Model.Comments)
+        {
+            <li class="list-group-item">
+                <strong>@comment.AuthorName</strong> <small class="text-muted">(@comment.CreatedAt.ToString("g"))</small>
+                <p class="mb-0">@comment.Text</p>
+            </li>
+        }
+    </ul>
+}
+else
+{
+    <p>Коментарів поки немає.</p>
+}
+
+<h5>Залишити коментар</h5>
+<form asp-action="AddComment" method="post" class="mb-4">
+    <input type="hidden" name="bookId" value="@Model.Id" />
+    <div class="mb-2">
+        <input type="text" name="authorName" class="form-control" placeholder="Ваше ім'я" required />
+    </div>
+    <div class="mb-2">
+        <textarea name="text" class="form-control" rows="3" placeholder="Ваш коментар" required></textarea>
+    </div>
+    <button type="submit" class="btn btn-success">Опублікувати</button>
+</form>
+
+<a asp-action="Index" class="btn btn-secondary">Назад до списку</a>

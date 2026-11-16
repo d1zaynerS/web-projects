@@ -1,0 +1,22 @@
+@model IEnumerable<WebApplication11.Models.SantaPair>
+
+<h2>Гра «Таємний Санта»</h2>
+<p>Результати жеребкування:</p>
+
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Учасник (Хто дарує)</th>
+            <th>Кому дарує</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var pair in Model)
+        {
+            <tr>
+                <td>@pair.Giver</td>
+                <td>🎁 @pair.Receiver</td>
+            </tr>
+        }
+    </tbody>
+</table>

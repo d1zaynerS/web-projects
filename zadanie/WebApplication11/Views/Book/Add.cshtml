@@ -1,0 +1,23 @@
+@model WebApplication11.ViewModel.BookViewModel
+
+<h2>Додати нову книгу</h2>
+
+<form method="post">
+    <div class="form-group mb-2">
+        <label>Назва книги</label>
+        <input type="text" name="Title" value="@Model?.Title" class="form-control" />
+    </div>
+    <div class="form-group mb-2">
+        <label>Автор</label>
+        <input type="text" name="Author" value="@Model?.Author" class="form-control" />
+    </div>
+    <div class="form-group mb-2">
+        <label>Жанр</label>
+        <input type="text" name="Genre" value="@Model?.Genre" class="form-control" />
+    </div>
+    <div class="form-group mb-2">
+        <label>Рік видання</label>
+        <input type="number" name="Year" value="@Model?.Year" class="form-control" />
+    </div>
+    <button type="submit" class="btn btn-success mt-2">Зберегти</button>
+</form>

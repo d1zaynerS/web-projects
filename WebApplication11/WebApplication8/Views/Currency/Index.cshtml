@@ -1,0 +1,35 @@
+﻿@model RecipeApp.Models.CurrencyViewModel
+
+<h2>Обмінник валют</h2>
+
+<form asp-action="Index" method="post">
+    <div>
+        <label>Продаю:</label>
+        <select asp-for="SellCurrency">
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="UAH">UAH</option>
+        </select>
+    </div>
+    <div>
+        <label>Купую:</label>
+        <select asp-for="BuyCurrency">
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="UAH">UAH</option>
+        </select>
+    </div>
+    <div>
+        <label>Сума:</label>
+        <input asp-for="Amount" type="number" step="0.01" />
+    </div>
+    <button type="submit">Розрахувати</button>
+</form>
+
+@if (Model.ResultAmount.HasValue)
+{
+    <br />
+    <div>
+        <strong>Результат обміну:</strong> @Model.Amount @Model.SellCurrency = @Model.ResultAmount.Value.ToString("F2") @Model.BuyCurrency
+    </div>
+}

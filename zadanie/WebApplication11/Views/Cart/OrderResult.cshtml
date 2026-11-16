@@ -1,0 +1,33 @@
+@model WebApplication11.ViewModel.OrderViewModel
+
+<h2>Замовлення успішно оформлено!</h2>
+
+<div class="card p-3 my-3">
+    <h4>Дані клієнта:</h4>
+    <p><strong>ПІБ:</strong> @Model.FullName</p>
+    <p><strong>Телефон:</strong> @Model.Phone</p>
+    <p><strong>Адреса:</strong> @Model.Address</p>
+</div>
+
+<h4>Склад замовлення:</h4>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Товар</th>
+            <th>Кількість</th>
+            <th>Сума</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model.Items)
+        {
+            <tr>
+                <td>@item.Product.Name</td>
+                <td>@item.Quantity</td>
+                <td>@(item.Product.Price * item.Quantity) грн</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h3>Разом до сплати: @Model.TotalSum грн</h3>

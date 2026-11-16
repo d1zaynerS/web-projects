@@ -1,0 +1,28 @@
+@model IEnumerable<WebApplication13.Models.Book>
+
+@{
+    ViewData["Title"] = "Каталог книг";
+}
+
+<h2>Каталог книг</h2>
+
+<div class="row">
+    @foreach (var book in Model)
+    {
+        <div class="col-md-4 mb-3">
+            <div class="card h-100">
+                @if (book.Images.Any())
+                {
+                    <img src="@book.Images.First().FilePath" class="card-img-top" alt="@book.Title" style="height: 200px; object-fit: cover;" />
+                }
+                <div class="card-body">
+                    <h5 class="card-title">@book.Title</h5>
+                    <p class="card-text"><strong>Автор:</strong> @book.Author</p>
+                    <p class="card-text"><strong>Жанр:</strong> @book.Genre</p>
+                    <p class="fw-bold">Ціна: @book.Price грн</p>
+                    <a asp-action="Details" asp-route-id="@book.Id" class="btn btn-primary">Детальніше</a>
+                </div>
+            </div>
+        </div>
+    }
+</div>

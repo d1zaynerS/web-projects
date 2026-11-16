@@ -1,0 +1,26 @@
+﻿@model RecipeApp.Models.FeedbackViewModel
+
+<h2>Зворотний зв'язок</h2>
+
+@if (Model.IsSent)
+{
+    <div style="color: green;">Повідомлення успішно надіслано адміністратору!</div>
+}
+else
+{
+    <form asp-action="Index" method="post">
+        <div>
+            <label>Тема листа:</label>
+            <select asp-for="Subject" asp-items="Html.GetEnumSelectList<RecipeApp.Models.SubjectType>()"></select>
+        </div>
+        <div>
+            <label>Ваш Email:</label>
+            <input asp-for="Email" type="email" required />
+        </div>
+        <div>
+            <label>Повідомлення:</label>
+            <textarea asp-for="Message" required></textarea>
+        </div>
+        <button type="submit">Надіслати</button>
+    </form>
+}

@@ -1,0 +1,26 @@
+@model IEnumerable<WebApplication11.Models.Book>
+
+<h2>Список книг</h2>
+<a asp-action="Add" class="btn btn-primary mb-3">Додати нову книгу</a>
+
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Назва</th>
+            <th>Автор</th>
+            <th>Жанр</th>
+            <th>Рік</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var book in Model)
+        {
+            <tr>
+                <td>@book.Title</td>
+                <td>@book.Author</td>
+                <td>@book.Genre</td>
+                <td>@book.Year</td>
+            </tr>
+        }
+    </tbody>
+</table>

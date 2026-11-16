@@ -1,0 +1,7 @@
+﻿@model RecipeApp.Models.OrderViewModel
+
+<div style="padding: 15px; background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724;">
+    <h3>Дякуємо за замовлення, @Model.FullName!</h3>
+    <p>Ви успішно оформили замовлення книги <strong>"@Model.BookTitle"</strong> на суму @Model.BookPrice грн.</p>
+    <p>Доставка здійснюється у місто <strong>@Model.City</strong>, відділення Нової Пошти №<strong>@Model.NovaPoshtaBranch</strong>.</p>
+</div>

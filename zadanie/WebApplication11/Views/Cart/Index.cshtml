@@ -1,0 +1,35 @@
+@model IEnumerable<WebApplication11.Models.Product>
+
+<h2>Каталог товарів</h2>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <span>Товарів у кошику: <strong>@ViewBag.CartCount</strong></span>
+    <a asp-action="Checkout" class="btn btn-success">Переглянути кошик / Оформити</a>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Найменування</th>
+            <th>Ціна</th>
+            <th>Кількість на складі</th>
+            <th>Дія</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var p in Model)
+        {
+            <tr>
+                <td>@p.Name</td>
+                <td>@p.Price грн</td>
+                <td>@p.StockQuantity</td>
+                <td>
+                    <form asp-action="AddToCart" method="post">
+                        <input type="hidden" name="id" value="@p.Id" />
+                        <button type="submit" class="btn btn-sm btn-primary">Додати до кошику</button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
