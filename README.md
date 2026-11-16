@@ -4,9 +4,9 @@ All web projects (HTML/CSS/ASP.NET), grouped from individual repositories.
 
 ## Содержимое / Contents
 
-- `PizzaStarS/`
-- `RazorWebProject/`
-- `WebApplication11/`
-- `WebApplication6/`
-- `zadanie/`
-- `zadanie-/`
+- `BookLibrary-Site/`
+- `BookShop-CartOrders/`
+- `MoviesSite-Mvc/`
+- `PizzaStar/`
+- `RazorTasksApp/`
+- `RecipesMvcApp/`
